@@ -367,6 +367,16 @@
               height="300"
             ></canvas>
 
+            <div class="kv" style="margin-top: 0">
+              <div>
+                <strong>Designer:</strong> Drag objects on canvas to reposition.
+              </div>
+              <div>
+                <strong>Selected:</strong>
+                <span id="designerSelection">none</span>
+              </div>
+            </div>
+
             <div class="row">
               <label
                 >Text
@@ -386,18 +396,18 @@
 
             <div class="row">
               <label
-                >Text X
+                >Object X
                 <input id="designerTextX" type="number" min="0" value="20" />
               </label>
               <label
-                >Text Y
+                >Object Y
                 <input id="designerTextY" type="number" min="0" value="70" />
               </label>
             </div>
 
             <div class="row">
               <label
-                >Text color
+                >Text/Symbol color
                 <select id="designerTextColor">
                   <option value="black" selected>black</option>
                   <option value="red">red</option>
@@ -413,12 +423,87 @@
               </label>
             </div>
 
+            <div class="row">
+              <label
+                >Symbol
+                <input id="designerSymbol" value="*" />
+              </label>
+              <label
+                >Symbol size
+                <input
+                  id="designerSymbolSize"
+                  type="number"
+                  min="8"
+                  max="240"
+                  value="48"
+                />
+              </label>
+            </div>
+
+            <div class="row">
+              <label
+                >Shape type
+                <select id="designerShapeType">
+                  <option value="rect" selected>rectangle</option>
+                  <option value="circle">circle</option>
+                </select>
+              </label>
+              <label
+                >Shape color
+                <select id="designerShapeColor">
+                  <option value="black" selected>black</option>
+                  <option value="red">red</option>
+                </select>
+              </label>
+            </div>
+
+            <div class="row">
+              <label
+                >Shape width
+                <input
+                  id="designerShapeW"
+                  type="number"
+                  min="4"
+                  max="500"
+                  value="120"
+                />
+              </label>
+              <label
+                >Shape height
+                <input
+                  id="designerShapeH"
+                  type="number"
+                  min="4"
+                  max="500"
+                  value="60"
+                />
+              </label>
+            </div>
+
+            <div class="row single">
+              <label
+                >Logo image
+                <input
+                  id="designerLogoInput"
+                  type="file"
+                  accept="image/png,image/jpeg,image/bmp,image/gif,image/webp"
+                />
+              </label>
+            </div>
+
             <div class="btns">
               <button id="designerFillBtn">Fill Background</button>
               <button id="designerUseUploadBtn">
                 Use Uploaded Image as Base
               </button>
+              <button id="designerAddLogoBtn">Add Logo</button>
               <button id="designerAddTextBtn">Add Text</button>
+              <button id="designerAddSymbolBtn">Add Symbol</button>
+              <button id="designerAddShapeBtn">Add Shape</button>
+              <button id="designerFrontBtn">Bring Selected Front</button>
+              <button id="designerDeleteBtn" class="warn">
+                Delete Selected
+              </button>
               <button id="designerUseBtn" class="primary">
                 Use Designer Image
               </button>
@@ -438,6 +523,11 @@
       <section class="card">
         <h2>Log</h2>
         <div id="status" class="status">Ready. Pick a device to begin.</div>
+        <div class="btns" style="margin: 10px 0 8px">
+          <button id="copyLogBtn">Copy Log</button>
+          <button id="clearLogBtn">Clear Log</button>
+          <button id="downloadLogBtn">Download Log</button>
+        </div>
         <textarea id="log" readonly></textarea>
       </section>
     </main>
@@ -464,16 +554,32 @@
         designerTextX: document.getElementById("designerTextX"),
         designerTextY: document.getElementById("designerTextY"),
         designerTextColor: document.getElementById("designerTextColor"),
+        designerSymbol: document.getElementById("designerSymbol"),
+        designerSymbolSize: document.getElementById("designerSymbolSize"),
+        designerShapeType: document.getElementById("designerShapeType"),
+        designerShapeColor: document.getElementById("designerShapeColor"),
+        designerShapeW: document.getElementById("designerShapeW"),
+        designerShapeH: document.getElementById("designerShapeH"),
+        designerLogoInput: document.getElementById("designerLogoInput"),
+        designerSelection: document.getElementById("designerSelection"),
         designerBackground: document.getElementById("designerBackground"),
         designerFillBtn: document.getElementById("designerFillBtn"),
         designerUseUploadBtn: document.getElementById("designerUseUploadBtn"),
+        designerAddLogoBtn: document.getElementById("designerAddLogoBtn"),
         designerAddTextBtn: document.getElementById("designerAddTextBtn"),
+        designerAddSymbolBtn: document.getElementById("designerAddSymbolBtn"),
+        designerAddShapeBtn: document.getElementById("designerAddShapeBtn"),
+        designerFrontBtn: document.getElementById("designerFrontBtn"),
+        designerDeleteBtn: document.getElementById("designerDeleteBtn"),
         designerUseBtn: document.getElementById("designerUseBtn"),
         designerSendBtn: document.getElementById("designerSendBtn"),
         deviceName: document.getElementById("deviceName"),
         connState: document.getElementById("connState"),
         status: document.getElementById("status"),
         log: document.getElementById("log"),
+        copyLogBtn: document.getElementById("copyLogBtn"),
+        clearLogBtn: document.getElementById("clearLogBtn"),
+        downloadLogBtn: document.getElementById("downloadLogBtn"),
         pickBtn: document.getElementById("pickBtn"),
         connectBtn: document.getElementById("connectBtn"),
         disconnectBtn: document.getElementById("disconnectBtn"),
@@ -493,6 +599,15 @@
       const designerCtx = ui.designerCanvas.getContext("2d", {
         willReadFrequently: true,
       });
+      const designerState = {
+        background: "#ffffff",
+        items: [],
+        selectedId: null,
+        nextId: 1,
+        dragging: false,
+        dragOffsetX: 0,
+        dragOffsetY: 0,
+      };
 
       function setStatus(text) {
         ui.status.textContent = text;
@@ -503,6 +618,15 @@
         const stamp = new Date().toLocaleTimeString();
         ui.log.value += `[${stamp}] ${text}\n`;
         ui.log.scrollTop = ui.log.scrollHeight;
+      }
+
+      function formatError(error) {
+        if (!error) {
+          return "unknown error";
+        }
+        const msg = error.message || String(error);
+        const name = error.name ? `${error.name}: ` : "";
+        return `${name}${msg}`;
       }
 
       function normalizeHexString(value) {
@@ -661,25 +785,158 @@
         return "#ffffff";
       }
 
-      function refreshDesignerCanvasSize() {
-        const targetWidth = Number.parseInt(ui.panelWidth.value, 10) || 400;
-        const targetHeight = Number.parseInt(ui.panelHeight.value, 10) || 300;
-        const oldData = designerCtx.getImageData(
+      function updateDesignerSelectionLabel() {
+        const item = designerState.items.find(
+          (entry) => entry.id === designerState.selectedId,
+        );
+        if (!item) {
+          ui.designerSelection.textContent = "none";
+          return;
+        }
+        ui.designerSelection.textContent = `${item.type} #${item.id}`;
+      }
+
+      function getDesignerItemBounds(item) {
+        if (item.type === "text" || item.type === "symbol") {
+          designerCtx.save();
+          designerCtx.font = `${item.size}px Segoe UI`;
+          const width = Math.max(8, designerCtx.measureText(item.text).width);
+          designerCtx.restore();
+          return {
+            x: item.x,
+            y: item.y,
+            w: width,
+            h: item.size,
+          };
+        }
+        return {
+          x: item.x,
+          y: item.y,
+          w: item.w,
+          h: item.h,
+        };
+      }
+
+      function clampDesignerItem(item) {
+        const bounds = getDesignerItemBounds(item);
+        const maxX = Math.max(0, ui.designerCanvas.width - bounds.w);
+        const maxY = Math.max(0, ui.designerCanvas.height - bounds.h);
+        item.x = Math.max(0, Math.min(item.x, maxX));
+        item.y = Math.max(0, Math.min(item.y, maxY));
+      }
+
+      function renderDesignerCanvas() {
+        designerCtx.fillStyle = designerState.background;
+        designerCtx.fillRect(
           0,
           0,
           ui.designerCanvas.width,
           ui.designerCanvas.height,
         );
-        const tmp = document.createElement("canvas");
-        tmp.width = ui.designerCanvas.width;
-        tmp.height = ui.designerCanvas.height;
-        tmp.getContext("2d").putImageData(oldData, 0, 0);
 
+        for (const item of designerState.items) {
+          if (item.type === "rect") {
+            designerCtx.fillStyle = item.color;
+            designerCtx.fillRect(item.x, item.y, item.w, item.h);
+          } else if (item.type === "circle") {
+            designerCtx.fillStyle = item.color;
+            designerCtx.beginPath();
+            designerCtx.ellipse(
+              item.x + item.w / 2,
+              item.y + item.h / 2,
+              item.w / 2,
+              item.h / 2,
+              0,
+              0,
+              Math.PI * 2,
+            );
+            designerCtx.fill();
+          } else if (item.type === "logo") {
+            designerCtx.drawImage(item.bitmap, item.x, item.y, item.w, item.h);
+          } else if (item.type === "text" || item.type === "symbol") {
+            designerCtx.fillStyle = item.color;
+            designerCtx.font = `${item.size}px Segoe UI`;
+            designerCtx.textBaseline = "top";
+            designerCtx.fillText(item.text, item.x, item.y);
+          }
+        }
+
+        const selected = designerState.items.find(
+          (item) => item.id === designerState.selectedId,
+        );
+        if (selected) {
+          const b = getDesignerItemBounds(selected);
+          designerCtx.save();
+          designerCtx.strokeStyle = "#136f63";
+          designerCtx.setLineDash([5, 3]);
+          designerCtx.lineWidth = 2;
+          designerCtx.strokeRect(b.x - 2, b.y - 2, b.w + 4, b.h + 4);
+          designerCtx.restore();
+        }
+
+        updateDesignerSelectionLabel();
+        if (imageSource === ui.designerCanvas) {
+          setPreviewFromCanvas(ui.designerCanvas);
+        }
+      }
+
+      function selectDesignerItem(idOrNull) {
+        designerState.selectedId = idOrNull;
+        const item = designerState.items.find((entry) => entry.id === idOrNull);
+        if (item) {
+          ui.designerTextX.value = String(Math.round(item.x));
+          ui.designerTextY.value = String(Math.round(item.y));
+        }
+        renderDesignerCanvas();
+      }
+
+      function getCanvasPoint(event) {
+        const rect = ui.designerCanvas.getBoundingClientRect();
+        const x =
+          ((event.clientX - rect.left) * ui.designerCanvas.width) / rect.width;
+        const y =
+          ((event.clientY - rect.top) * ui.designerCanvas.height) / rect.height;
+        return { x, y };
+      }
+
+      function hitTestDesignerItem(x, y) {
+        for (let i = designerState.items.length - 1; i >= 0; i -= 1) {
+          const item = designerState.items[i];
+          const b = getDesignerItemBounds(item);
+          if (x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h) {
+            return item;
+          }
+        }
+        return null;
+      }
+
+      function refreshDesignerCanvasSize() {
+        const oldW = ui.designerCanvas.width;
+        const oldH = ui.designerCanvas.height;
+        const targetWidth = Number.parseInt(ui.panelWidth.value, 10) || 400;
+        const targetHeight = Number.parseInt(ui.panelHeight.value, 10) || 300;
         ui.designerCanvas.width = targetWidth;
         ui.designerCanvas.height = targetHeight;
-        designerCtx.fillStyle = "#ffffff";
-        designerCtx.fillRect(0, 0, targetWidth, targetHeight);
-        designerCtx.drawImage(tmp, 0, 0, targetWidth, targetHeight);
+
+        const scaleX = targetWidth / Math.max(1, oldW);
+        const scaleY = targetHeight / Math.max(1, oldH);
+        const scaleText = Math.min(scaleX, scaleY);
+        for (const item of designerState.items) {
+          item.x *= scaleX;
+          item.y *= scaleY;
+          if (typeof item.w === "number") {
+            item.w *= scaleX;
+          }
+          if (typeof item.h === "number") {
+            item.h *= scaleY;
+          }
+          if (typeof item.size === "number") {
+            item.size = Math.max(8, item.size * scaleText);
+          }
+          clampDesignerItem(item);
+        }
+
+        renderDesignerCanvas();
       }
 
       function setPreviewFromCanvas(canvas) {
@@ -693,13 +950,8 @@
       }
 
       function fillDesignerBackground() {
-        designerCtx.fillStyle = colorNameToHex(ui.designerBackground.value);
-        designerCtx.fillRect(
-          0,
-          0,
-          ui.designerCanvas.width,
-          ui.designerCanvas.height,
-        );
+        designerState.background = colorNameToHex(ui.designerBackground.value);
+        renderDesignerCanvas();
         setStatus("Designer background filled.");
       }
 
@@ -715,11 +967,136 @@
           Number.parseInt(ui.designerFontSize.value, 10) || 36,
         );
 
-        designerCtx.fillStyle = colorNameToHex(ui.designerTextColor.value);
-        designerCtx.font = `${size}px Segoe UI`;
-        designerCtx.textBaseline = "top";
-        designerCtx.fillText(text, x, y);
+        const item = {
+          id: designerState.nextId,
+          type: "text",
+          text,
+          size,
+          color: colorNameToHex(ui.designerTextColor.value),
+          x,
+          y,
+        };
+        designerState.nextId += 1;
+        clampDesignerItem(item);
+        designerState.items.push(item);
+        selectDesignerItem(item.id);
         setStatus("Text added to designer canvas.");
+      }
+
+      function addDesignerSymbol() {
+        const text = ui.designerSymbol.value;
+        if (!text.trim()) {
+          throw new Error("Enter a symbol before adding.");
+        }
+        const x = Number.parseInt(ui.designerTextX.value, 10) || 0;
+        const y = Number.parseInt(ui.designerTextY.value, 10) || 0;
+        const size = Math.max(
+          8,
+          Number.parseInt(ui.designerSymbolSize.value, 10) || 48,
+        );
+        const item = {
+          id: designerState.nextId,
+          type: "symbol",
+          text,
+          size,
+          color: colorNameToHex(ui.designerTextColor.value),
+          x,
+          y,
+        };
+        designerState.nextId += 1;
+        clampDesignerItem(item);
+        designerState.items.push(item);
+        selectDesignerItem(item.id);
+        setStatus("Symbol added to designer canvas.");
+      }
+
+      function addDesignerShape() {
+        const x = Number.parseInt(ui.designerTextX.value, 10) || 0;
+        const y = Number.parseInt(ui.designerTextY.value, 10) || 0;
+        const w = Math.max(
+          4,
+          Number.parseInt(ui.designerShapeW.value, 10) || 120,
+        );
+        const h = Math.max(
+          4,
+          Number.parseInt(ui.designerShapeH.value, 10) || 60,
+        );
+        const item = {
+          id: designerState.nextId,
+          type: ui.designerShapeType.value,
+          color: colorNameToHex(ui.designerShapeColor.value),
+          x,
+          y,
+          w,
+          h,
+        };
+        designerState.nextId += 1;
+        clampDesignerItem(item);
+        designerState.items.push(item);
+        selectDesignerItem(item.id);
+        setStatus("Shape added to designer canvas.");
+      }
+
+      function addDesignerLogoFromBitmap(bitmap, sourceLabel, asBase = false) {
+        const targetW = asBase
+          ? ui.designerCanvas.width
+          : Math.max(40, Math.round(ui.designerCanvas.width * 0.28));
+        const aspect = bitmap.width / Math.max(1, bitmap.height);
+        const targetH = asBase
+          ? ui.designerCanvas.height
+          : Math.max(20, Math.round(targetW / Math.max(0.01, aspect)));
+        const x = asBase ? 0 : Number.parseInt(ui.designerTextX.value, 10) || 0;
+        const y = asBase ? 0 : Number.parseInt(ui.designerTextY.value, 10) || 0;
+
+        const item = {
+          id: designerState.nextId,
+          type: "logo",
+          bitmap,
+          x,
+          y,
+          w: targetW,
+          h: targetH,
+        };
+        designerState.nextId += 1;
+        clampDesignerItem(item);
+        designerState.items.push(item);
+        selectDesignerItem(item.id);
+        setStatus(sourceLabel);
+      }
+
+      async function addDesignerLogoFromFile() {
+        const file = ui.designerLogoInput.files?.[0];
+        if (!file) {
+          throw new Error("Choose a logo image file first.");
+        }
+        const bitmap = await createImageBitmap(file);
+        addDesignerLogoFromBitmap(bitmap, `Logo added: ${file.name}`);
+      }
+
+      function bringSelectedDesignerItemToFront() {
+        const index = designerState.items.findIndex(
+          (item) => item.id === designerState.selectedId,
+        );
+        if (index < 0) {
+          throw new Error("Select an item first.");
+        }
+        const [item] = designerState.items.splice(index, 1);
+        designerState.items.push(item);
+        renderDesignerCanvas();
+        setStatus(`Moved ${item.type} #${item.id} to front.`);
+      }
+
+      function deleteSelectedDesignerItem() {
+        const index = designerState.items.findIndex(
+          (item) => item.id === designerState.selectedId,
+        );
+        if (index < 0) {
+          throw new Error("Select an item first.");
+        }
+        const [removed] = designerState.items.splice(index, 1);
+        designerState.selectedId = null;
+        renderDesignerCanvas();
+        setStatus(`Deleted ${removed.type} #${removed.id}.`);
       }
 
       function createWhiteCanvasSource() {
@@ -741,6 +1118,9 @@
 
         const serviceUuid = ui.serviceUuid.value.trim();
         const prefix = ui.namePrefix.value.trim();
+        addLog(
+          `requestDevice with service=${serviceUuid || "(none)"}, namePrefix=${prefix || "(none)"}`,
+        );
 
         const filters = [];
         if (prefix) {
@@ -779,6 +1159,9 @@
         }
         const serviceUuid = ui.serviceUuid.value.trim();
         const writeUuid = ui.writeUuid.value.trim();
+
+        addLog(`Connecting to device id=${selectedDevice.id || "(none)"}`);
+        addLog(`Target UUIDs service=${serviceUuid}, write=${writeUuid}`);
 
         gattServer = await selectedDevice.gatt.connect();
         ui.connState.textContent = "connected";
@@ -854,14 +1237,10 @@
           throw new Error("Write characteristic not ready. Connect first.");
         }
 
-        const chunkSize = Math.min(
+        const configuredChunkSize = Math.min(
           512,
           Math.max(20, Number.parseInt(ui.chunkSize.value, 10) || 180),
         );
-        const chunks = [];
-        for (let i = 0; i < payload.length; i += chunkSize) {
-          chunks.push(payload.slice(i, i + chunkSize));
-        }
 
         const primaryMode = chooseWriteMode();
         const fallbackMode =
@@ -869,16 +1248,43 @@
             ? "without-response"
             : "with-response";
 
+        const chunkSize =
+          primaryMode === "without-response"
+            ? Math.min(configuredChunkSize, 20)
+            : configuredChunkSize;
+        if (primaryMode === "without-response" && configuredChunkSize > 20) {
+          addLog(
+            `Chunk size ${configuredChunkSize} forced to 20 for without-response reliability.`,
+          );
+        }
+
+        const chunks = [];
+        for (let i = 0; i < payload.length; i += chunkSize) {
+          chunks.push(payload.slice(i, i + chunkSize));
+        }
+
+        addLog(
+          `Write start: payload=${payload.length} bytes, chunks=${chunks.length}, primaryMode=${primaryMode}, chunkSize=${chunkSize}`,
+        );
+
         try {
-          for (const chunk of chunks) {
+          for (let i = 0; i < chunks.length; i += 1) {
+            const chunk = chunks[i];
             await writeChunk(chunk, primaryMode);
+            if (i < 2 || i === chunks.length - 1) {
+              addLog(
+                `Chunk ${i + 1}/${chunks.length} sent (${chunk.length} bytes)`,
+              );
+            }
             await new Promise((r) => setTimeout(r, 50));
           }
           setStatus(
             `Write successful (${chunks.length} chunk(s), ${primaryMode}).`,
           );
         } catch (error) {
-          addLog(`Primary write failed (${primaryMode}): ${error}`);
+          addLog(
+            `Primary write failed (${primaryMode}): ${formatError(error)}`,
+          );
           if (!selectedDevice?.gatt?.connected) {
             throw new Error(
               "Device disconnected during write. Try reconnecting and set write mode to without response.",
@@ -891,8 +1297,15 @@
           if (!canFallback) {
             throw error;
           }
-          for (const chunk of chunks) {
+          addLog(`Trying fallback mode: ${fallbackMode}`);
+          for (let i = 0; i < chunks.length; i += 1) {
+            const chunk = chunks[i];
             await writeChunk(chunk, fallbackMode);
+            if (i < 2 || i === chunks.length - 1) {
+              addLog(
+                `Fallback chunk ${i + 1}/${chunks.length} sent (${chunk.length} bytes)`,
+              );
+            }
             await new Promise((r) => setTimeout(r, 50));
           }
           setStatus(
@@ -905,10 +1318,28 @@
         const ledData = ui.ledHex.value.trim() || "01 00";
         const payload = hexToBytes(ledData);
         const withZero = concatBytes(payload, new Uint8Array([0x00]));
-        await writePayloadWithFallback(withZero);
-        await new Promise((r) => setTimeout(r, 300));
+        addLog(
+          `LED sequence A: ${bytesToHex(withZero)} then ${bytesToHex(payload)}`,
+        );
+        try {
+          await writePayloadWithFallback(withZero);
+          await new Promise((r) => setTimeout(r, 300));
+          await writePayloadWithFallback(payload);
+          setStatus("LED test sent (sequence A). If no blink, check logs.");
+          return;
+        } catch (firstError) {
+          addLog(`LED sequence A failed: ${formatError(firstError)}`);
+        }
+
+        addLog(
+          `LED sequence B: ${bytesToHex(payload)} then ${bytesToHex(withZero)}`,
+        );
         await writePayloadWithFallback(payload);
-        setStatus("LED test sent.");
+        await new Promise((r) => setTimeout(r, 250));
+        await writePayloadWithFallback(withZero);
+        setStatus(
+          "LED test sent (sequence B fallback). If no blink, share logs.",
+        );
       }
 
       async function sendImage() {
@@ -926,7 +1357,14 @@
           createWhiteCanvasSource(),
           "Prepared white image to clear display.",
         );
+
+        const oldColorMode = ui.colorMode.value;
+        ui.colorMode.value = "black/white";
+        addLog(
+          "Clear display uses black/white payload mode for compatibility.",
+        );
         await sendImage();
+        ui.colorMode.value = oldColorMode;
         setStatus("Display clear command sent (white image uploaded).");
       }
 
@@ -949,6 +1387,80 @@
       ui.panelWidth.addEventListener("change", refreshDesignerCanvasSize);
       ui.panelHeight.addEventListener("change", refreshDesignerCanvasSize);
 
+      ui.designerCanvas.addEventListener("pointerdown", (event) => {
+        const point = getCanvasPoint(event);
+        const hit = hitTestDesignerItem(point.x, point.y);
+        if (!hit) {
+          designerState.dragging = false;
+          selectDesignerItem(null);
+          return;
+        }
+        selectDesignerItem(hit.id);
+        designerState.dragging = true;
+        designerState.dragOffsetX = point.x - hit.x;
+        designerState.dragOffsetY = point.y - hit.y;
+        ui.designerCanvas.setPointerCapture(event.pointerId);
+      });
+
+      ui.designerCanvas.addEventListener("pointermove", (event) => {
+        const point = getCanvasPoint(event);
+        const hoverItem = hitTestDesignerItem(point.x, point.y);
+        ui.designerCanvas.style.cursor = hoverItem ? "grab" : "default";
+
+        if (!designerState.dragging || designerState.selectedId == null) {
+          return;
+        }
+        const item = designerState.items.find(
+          (entry) => entry.id === designerState.selectedId,
+        );
+        if (!item) {
+          return;
+        }
+
+        item.x = point.x - designerState.dragOffsetX;
+        item.y = point.y - designerState.dragOffsetY;
+        clampDesignerItem(item);
+        ui.designerTextX.value = String(Math.round(item.x));
+        ui.designerTextY.value = String(Math.round(item.y));
+        renderDesignerCanvas();
+      });
+
+      ui.designerCanvas.addEventListener("pointerup", (event) => {
+        designerState.dragging = false;
+        if (ui.designerCanvas.hasPointerCapture(event.pointerId)) {
+          ui.designerCanvas.releasePointerCapture(event.pointerId);
+        }
+      });
+
+      ui.designerCanvas.addEventListener("pointercancel", (event) => {
+        designerState.dragging = false;
+        if (ui.designerCanvas.hasPointerCapture(event.pointerId)) {
+          ui.designerCanvas.releasePointerCapture(event.pointerId);
+        }
+      });
+
+      function updateSelectedItemPositionFromInputs() {
+        const item = designerState.items.find(
+          (entry) => entry.id === designerState.selectedId,
+        );
+        if (!item) {
+          return;
+        }
+        item.x = Number.parseInt(ui.designerTextX.value, 10) || 0;
+        item.y = Number.parseInt(ui.designerTextY.value, 10) || 0;
+        clampDesignerItem(item);
+        renderDesignerCanvas();
+      }
+
+      ui.designerTextX.addEventListener(
+        "change",
+        updateSelectedItemPositionFromInputs,
+      );
+      ui.designerTextY.addEventListener(
+        "change",
+        updateSelectedItemPositionFromInputs,
+      );
+
       ui.clearScreenBtn.addEventListener("click", async () => {
         try {
           await clearDisplayWithWhiteImage();
@@ -970,16 +1482,21 @@
           if (!uploadedBitmap) {
             throw new Error("Upload an image first.");
           }
-          designerCtx.drawImage(
+          addDesignerLogoFromBitmap(
             uploadedBitmap,
-            0,
-            0,
-            ui.designerCanvas.width,
-            ui.designerCanvas.height,
+            "Uploaded image added as base layer.",
+            true,
           );
-          setStatus("Uploaded image placed in designer canvas.");
         } catch (error) {
           setStatus(`Use upload failed: ${error.message || error}`);
+        }
+      });
+
+      ui.designerAddLogoBtn.addEventListener("click", async () => {
+        try {
+          await addDesignerLogoFromFile();
+        } catch (error) {
+          setStatus(`Add logo failed: ${error.message || error}`);
         }
       });
 
@@ -988,6 +1505,38 @@
           addDesignerText();
         } catch (error) {
           setStatus(`Add text failed: ${error.message || error}`);
+        }
+      });
+
+      ui.designerAddSymbolBtn.addEventListener("click", () => {
+        try {
+          addDesignerSymbol();
+        } catch (error) {
+          setStatus(`Add symbol failed: ${error.message || error}`);
+        }
+      });
+
+      ui.designerAddShapeBtn.addEventListener("click", () => {
+        try {
+          addDesignerShape();
+        } catch (error) {
+          setStatus(`Add shape failed: ${error.message || error}`);
+        }
+      });
+
+      ui.designerFrontBtn.addEventListener("click", () => {
+        try {
+          bringSelectedDesignerItemToFront();
+        } catch (error) {
+          setStatus(`Bring front failed: ${error.message || error}`);
+        }
+      });
+
+      ui.designerDeleteBtn.addEventListener("click", () => {
+        try {
+          deleteSelectedDesignerItem();
+        } catch (error) {
+          setStatus(`Delete selected failed: ${error.message || error}`);
         }
       });
 
@@ -1052,6 +1601,37 @@
         } catch (error) {
           setStatus(`Send failed: ${error.message || error}`);
         }
+      });
+
+      ui.copyLogBtn.addEventListener("click", async () => {
+        try {
+          await navigator.clipboard.writeText(ui.log.value || "");
+          setStatus("Log copied to clipboard.");
+        } catch (error) {
+          ui.log.select();
+          document.execCommand("copy");
+          setStatus("Log copied using fallback copy method.");
+        }
+      });
+
+      ui.clearLogBtn.addEventListener("click", () => {
+        ui.log.value = "";
+        addLog("Log cleared.");
+        setStatus("Log cleared.");
+      });
+
+      ui.downloadLogBtn.addEventListener("click", () => {
+        const content = ui.log.value || "";
+        const blob = new Blob([content], { type: "text/plain;charset=utf-8" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `ble-debug-log-${Date.now()}.txt`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        setStatus("Log downloaded.");
       });
 
       fillDesignerBackground();
