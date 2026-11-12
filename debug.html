@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>BLE LED Stage Debugger2</title>
+    <title>BLE LED Stage Debugger</title>
     <style>
       :root {
         --bg: #f4f2ed;
@@ -526,7 +526,7 @@
         return new Uint8Array(runs.length <= raw.length ? runs : raw);
       }
 
-      function buildIdentifyPayload(macAddress) {
+      function buildIdentifyPayload(macAddress, stageNumber = null) {
         const macHex = macHexFromText(macAddress);
         const modelCode = macHex.slice(0, 2);
         const model = EASYTAG_MODELS[modelCode];
@@ -549,25 +549,58 @@
         ctx.strokeRect(border / 2, border / 2, width - border, height - border);
 
         const code = macHex;
+        const stageText =
+          stageNumber === null || Number.isNaN(Number(stageNumber))
+            ? "THIS SCREEN IS"
+            : `STAGE ${String(stageNumber).padStart(2, "0")}`;
+
         ctx.textAlign = "center";
 
-        ctx.fillStyle = "#000000";
-        ctx.font = `700 ${Math.max(18, Math.round(height * 0.085))}px sans-serif`;
-        ctx.fillText("THIS SCREEN IS", width / 2, Math.round(height * 0.17));
+        if (stageNumber !== null && !Number.isNaN(Number(stageNumber))) {
+          ctx.fillStyle = "#000000";
+          ctx.font = `700 ${Math.max(18, Math.round(height * 0.085))}px sans-serif`;
+          ctx.fillText("THIS SCREEN IS", width / 2, Math.round(height * 0.13));
 
-        ctx.fillStyle = "#e00000";
-        ctx.font = `700 ${Math.max(28, Math.round(height * 0.2))}px sans-serif`;
-        ctx.fillText(code, width / 2, Math.round(height * 0.5));
+          ctx.fillStyle = "#e00000";
+          ctx.font = `700 ${Math.max(34, Math.round(height * 0.22))}px sans-serif`;
+          ctx.fillText(
+            stageText.replace("STAGE ", ""),
+            width / 2,
+            Math.round(height * 0.38),
+          );
+
+          ctx.fillStyle = "#000000";
+          ctx.font = `700 ${Math.max(18, Math.round(height * 0.085))}px sans-serif`;
+          ctx.fillText(
+            `STAGE ${String(stageNumber).padStart(2, "0")}`,
+            width / 2,
+            Math.round(height * 0.51),
+          );
+
+          ctx.fillStyle = "#e00000";
+          ctx.font = `700 ${Math.max(22, Math.round(height * 0.13))}px sans-serif`;
+          ctx.fillText(code, width / 2, Math.round(height * 0.72));
+        } else {
+          ctx.fillStyle = "#000000";
+          ctx.font = `700 ${Math.max(18, Math.round(height * 0.085))}px sans-serif`;
+          ctx.fillText("THIS SCREEN IS", width / 2, Math.round(height * 0.17));
+
+          ctx.fillStyle = "#e00000";
+          ctx.font = `700 ${Math.max(28, Math.round(height * 0.2))}px sans-serif`;
+          ctx.fillText(code, width / 2, Math.round(height * 0.5));
+        }
 
         ctx.fillStyle = "#000000";
         ctx.font = `700 ${Math.max(20, Math.round(height * 0.1))}px sans-serif`;
-        ctx.fillText("Identify", width / 2, Math.round(height * 0.72));
+        ctx.fillText("Identify", width / 2, Math.round(height * 0.87));
 
         ctx.font = `${Math.max(14, Math.round(height * 0.055))}px sans-serif`;
         ctx.fillText(
-          "BLE LED Stage Debugger",
+          stageNumber === null || Number.isNaN(Number(stageNumber))
+            ? "BLE LED Stage Debugger"
+            : `Stage ${String(stageNumber).padStart(2, "0")}`,
           width / 2,
-          Math.round(height * 0.83),
+          Math.round(height * 0.95),
         );
 
         const rgba = ctx.getImageData(0, 0, width, height).data;
@@ -968,21 +1001,27 @@
         setStatus(`LED ${isOn ? "ON" : "OFF"} command sent (framed fallback)`);
       }
 
-      async function sendIdentify() {
+      async function sendIdentify(stageNumber = null) {
         const mac = ui.manualMac.value.trim();
         if (!mac) {
           throw new Error("MAC is required for Identify");
         }
 
         await ensureConnected();
-        const payload = buildIdentifyPayload(mac);
+        const payload = buildIdentifyPayload(mac, stageNumber);
         const packets = roomSignsFramedPackets(mac, payload);
+        const label =
+          stageNumber === null || Number.isNaN(Number(stageNumber))
+            ? "manual identify"
+            : `stage ${String(stageNumber).padStart(2, "0")}`;
         await addLog(
-          `IDENTIFY: built payload ${payload.length} byte(s), framed into ${packets.length} packet(s)`,
+          `IDENTIFY: ${label}, built payload ${payload.length} byte(s), framed into ${packets.length} packet(s)`,
         );
         await writeSequence(packets, "without-response", "IDENTIFY");
         setStatus(
-          "Identify command sent. Screen should redraw in about 30 seconds.",
+          stageNumber === null || Number.isNaN(Number(stageNumber))
+            ? "Identify command sent. Screen should redraw in about 30 seconds."
+            : `Stage ${String(stageNumber).padStart(2, "0")} identify sent. Screen should redraw in about 30 seconds.`,
         );
       }
 
@@ -1011,10 +1050,13 @@
         await sendLedCommand("off");
       }
 
-      async function runStage(stage) {
+      async function runStage(stage, stageNumber) {
         updateStage(stage.name);
         setStatus(`Running stage: ${stage.name}`);
         await addLog(`STAGE START: ${stage.name}`);
+        if (ui.manualMac.value.trim()) {
+          await sendIdentify(stageNumber);
+        }
         await stage.run();
         await addLog(`STAGE END: ${stage.name} (write success)`);
       }
@@ -1120,8 +1162,9 @@
               break;
             }
             const stage = stages[i];
+            const stageNumber = i + 1;
             try {
-              await runStage(stage);
+              await runStage(stage, stageNumber);
             } catch (error) {
               const msg = `${stage.name} failed: ${formatError(error)}`;
               failures.push(msg);
