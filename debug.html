@@ -242,18 +242,18 @@
 
         <div class="grid">
           <label>
-            Tag MAC for APK framed method (optional)
+            Tag MAC for RoomSigns framing (optional)
             <input id="manualMac" placeholder="AA:BB:CC:DD:EE:FF" />
           </label>
           <label>
-            APK op byte (task10 payload[0])
-            <input id="apkOpHex" value="00" />
+            Custom framed payload hex (optional)
+            <input id="apkOpHex" value="01 00" />
           </label>
         </div>
 
         <p class="muted">
-          Note: Web Bluetooth cannot expose MAC address. To test APK-style
-          encrypted frames, type the tag MAC manually.
+          Note: Web Bluetooth cannot expose MAC address. RoomSigns-style easyTag
+          frames require the tag MAC for session-key obfuscation.
         </p>
       </section>
 
@@ -299,6 +299,16 @@
         0x0000, 0x8005, 0x800f, 0x000a, 0x801b, 0x001e, 0x0014, 0x8011, 0x8033,
         0x0036, 0x003c, 0x8039, 0x0028, 0x802d, 0x8027, 0x0022,
       ];
+      const EASYTAG_KEY_TABLE =
+        "b8b26356ec4473bd3f36e6495d756703a4bb835139f0b161423b5f286c4e97d6" +
+        "0015bab2cdefb7ae0fcb099b599cc44d391645dde4b89b6e50f53dc046ec25ac" +
+        "b8b26356ec4473bd3f36e6495d756703a4bb835139f0b161423b5f286c4e97d6" +
+        "0015bab2cdefb7ae0fcb099b599ac44d391645dde4b89b6e50f53dc046ec25ac";
+      const EASYTAG_IDENTIFIER = Array.from("easyTag", (c) => c.charCodeAt(0));
+      const EASYTAG_MARKER = [0x42, 0x54]; // "BT"
+      const EASYTAG_KEY_INDEX_IMAGE = 0x62;
+      const EASYTAG_KEY_INDEX_OFFSET = 9;
+      const EASYTAG_CHUNK = 200;
 
       let selectedDevice = null;
       let gattServer = null;
@@ -372,10 +382,10 @@
         );
       }
 
-      function crc16Nibble(buffer, length) {
-        let crc = 0x10000;
-        for (let i = 0; i < length; i += 1) {
-          let val = buffer[i];
+      function crc16Cms(bytes) {
+        let crc = 0xffff;
+        for (let i = 0; i < bytes.length; i += 1) {
+          let val = bytes[i];
           for (let j = 0; j < 2; j += 1) {
             const idx = (((crc >> 8) ^ val) >> 4) & 0x0f;
             crc = (CRC_TABLE[idx] ^ ((crc << 4) & 0xffff)) & 0xffff;
@@ -385,69 +395,86 @@
         return crc & 0xffff;
       }
 
-      function xorMacSeed(macHex) {
+      function macBytes(macHex) {
         const macBytes = hexToBytes(macHex);
         if (macBytes.length !== 6) {
           throw new Error("MAC must be 6 bytes (AA:BB:CC:DD:EE:FF)");
         }
-        let x = 0;
-        for (let i = 0; i < macBytes.length; i += 1) {
-          x ^= macBytes[i];
-        }
-        return x & 0xff;
+        return macBytes;
       }
 
-      function apkTask10Packets(macAddress, opByte) {
-        const macSeed = xorMacSeed(macAddress);
-        const xorConst = 0x63;
+      function u16be(value) {
+        return [(value >> 8) & 0xff, value & 0xff];
+      }
 
-        const header = new Uint8Array(20);
-        header[0] = 0xff;
-        header[1] = 0xf0;
-        header[2] = 0x65;
-        header[3] = 0x61;
-        header[4] = 0x73;
-        header[5] = 0x79;
-        header[6] = 0x54;
-        header[7] = 0x61;
-        header[8] = 0x67;
-        header[9] = 0x5c;
-        header[10] = 0x00;
-        header[11] = 0x00;
-        header[12] = 0x00;
-        header[13] = 0x01;
-        header[14] = 0x00;
-        header[15] = 0x01;
-        header[16] = 0x42;
-        header[17] = 0x54;
+      function u32be(value) {
+        return [
+          (value >>> 24) & 0xff,
+          (value >>> 16) & 0xff,
+          (value >>> 8) & 0xff,
+          value & 0xff,
+        ];
+      }
 
-        const headerCrc = crc16Nibble(header, 18);
-        header[18] = (headerCrc >> 8) & 0xff;
-        header[19] = headerCrc & 0xff;
+      function withCrc(bytes) {
+        const data = Array.from(bytes);
+        const crc = crc16Cms(data);
+        data.push((crc >> 8) & 0xff, crc & 0xff);
+        return new Uint8Array(data);
+      }
 
-        for (let i = 0; i < 20; i += 1) {
-          if (i === 9) {
-            continue;
-          }
-          header[i] ^= macSeed;
-          header[i] ^= xorConst;
+      function obfuscate(bytes, key, keepIndex = -1) {
+        const out = new Uint8Array(bytes.length);
+        for (let i = 0; i < bytes.length; i += 1) {
+          out[i] = i === keepIndex ? bytes[i] : (bytes[i] ^ key) & 0xff;
+        }
+        return out;
+      }
+
+      function sessionKey(macAddress, keyIndex) {
+        const mac = macBytes(macAddress);
+        let key = EASYTAG_KEY_TABLE.charCodeAt(keyIndex) & 0xff;
+        for (let i = 0; i < mac.length; i += 1) {
+          key ^= mac[i];
+        }
+        return key & 0xff;
+      }
+
+      function roomSignsFramedPackets(macAddress, payload) {
+        const key = sessionKey(macAddress, EASYTAG_KEY_INDEX_IMAGE);
+        const count = Math.floor(
+          (payload.length + EASYTAG_CHUNK + 1) / EASYTAG_CHUNK,
+        );
+
+        const header = new Uint8Array([
+          0xff,
+          0xfc,
+          ...EASYTAG_IDENTIFIER,
+          EASYTAG_KEY_INDEX_IMAGE,
+          ...u32be(payload.length),
+          ...u16be(count),
+          ...EASYTAG_MARKER,
+        ]);
+
+        const packets = [
+          obfuscate(withCrc(header), key, EASYTAG_KEY_INDEX_OFFSET),
+        ];
+
+        for (let n = 1; n <= count; n += 1) {
+          const chunk = new Uint8Array(EASYTAG_CHUNK);
+          const start = (n - 1) * EASYTAG_CHUNK;
+          const part = payload.slice(start, start + EASYTAG_CHUNK);
+          chunk.set(part, 0);
+
+          const body = new Uint8Array(2 + EASYTAG_CHUNK);
+          body[0] = (n >> 8) & 0xff;
+          body[1] = n & 0xff;
+          body.set(chunk, 2);
+
+          packets.push(obfuscate(withCrc(body), key));
         }
 
-        const body = new Uint8Array(204);
-        body[0] = 0x00;
-        body[1] = 0x01;
-        body[2] = opByte & 0xff;
-
-        const bodyCrc = crc16Nibble(body, 202);
-        body[202] = (bodyCrc >> 8) & 0xff;
-        body[203] = bodyCrc & 0xff;
-
-        for (let i = 0; i < 204; i += 1) {
-          body[i] ^= macSeed;
-          body[i] ^= xorConst;
-        }
-
-        return [header, body];
+        return packets;
       }
 
       async function pickDevice() {
@@ -737,34 +764,35 @@
               writeSequence([ledOn, ledOn, ledOn], "with-response", "S8"),
           },
           {
-            name: "S9 APK task10 framed with-response",
+            name: "S9 RoomSigns framed LED ON",
             run: async () => {
               const mac = ui.manualMac.value.trim();
               if (!mac) {
                 await addLog("S9 skipped: MAC not provided");
                 return;
               }
-              const op = hexToBytes(ui.apkOpHex.value || "00");
-              if (op.length !== 1) {
-                throw new Error("APK op must be exactly 1 byte");
-              }
-              const packets = apkTask10Packets(mac, op[0]);
-              await writeSequence(packets, "with-response", "S9");
+              const packets = roomSignsFramedPackets(mac, ledOn);
+              await addLog(
+                `S9: built ${packets.length} frame packet(s) from ${ledOn.length} payload byte(s)`,
+              );
+              await writeSequence(packets, "without-response", "S9");
             },
           },
           {
-            name: "S10 APK task10 framed without-response",
+            name: "S10 RoomSigns framed LED OFF/custom",
             run: async () => {
               const mac = ui.manualMac.value.trim();
               if (!mac) {
                 await addLog("S10 skipped: MAC not provided");
                 return;
               }
-              const op = hexToBytes(ui.apkOpHex.value || "00");
-              if (op.length !== 1) {
-                throw new Error("APK op must be exactly 1 byte");
-              }
-              const packets = apkTask10Packets(mac, op[0]);
+
+              const custom = hexToBytes(ui.apkOpHex.value || "");
+              const payload = custom.length ? custom : ledOff;
+              const packets = roomSignsFramedPackets(mac, payload);
+              await addLog(
+                `S10: built ${packets.length} frame packet(s) from ${payload.length} payload byte(s)`,
+              );
               await writeSequence(packets, "without-response", "S10");
             },
           },
