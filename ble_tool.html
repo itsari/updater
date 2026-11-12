@@ -181,6 +181,22 @@
         line-height: 1.4;
       }
 
+      .designer-wrap {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 10px;
+        margin-top: 12px;
+      }
+
+      .designer-canvas {
+        width: 100%;
+        max-height: 260px;
+        border: 1px solid #cabca9;
+        border-radius: 10px;
+        background: #fff;
+        object-fit: contain;
+      }
+
       @media (max-width: 900px) {
         .grid {
           grid-template-columns: 1fr;
@@ -250,6 +266,17 @@
                 max="512"
                 value="180"
               />
+            </label>
+          </div>
+
+          <div class="row single">
+            <label
+              >Write mode
+              <select id="writeMode">
+                <option value="auto" selected>auto (recommended)</option>
+                <option value="without-response">without response</option>
+                <option value="with-response">with response</option>
+              </select>
             </label>
           </div>
 
@@ -325,6 +352,80 @@
 
           <div class="btns" style="margin-top: 12px">
             <button id="sendBtn" class="primary">Send Image</button>
+            <button id="clearScreenBtn" class="warn">
+              Clear Display (Send White)
+            </button>
+          </div>
+
+          <div class="designer-wrap">
+            <h2>Online Designer</h2>
+
+            <canvas
+              id="designerCanvas"
+              class="designer-canvas"
+              width="400"
+              height="300"
+            ></canvas>
+
+            <div class="row">
+              <label
+                >Text
+                <input id="designerText" placeholder="Sale 50%" />
+              </label>
+              <label
+                >Font size
+                <input
+                  id="designerFontSize"
+                  type="number"
+                  min="8"
+                  max="200"
+                  value="36"
+                />
+              </label>
+            </div>
+
+            <div class="row">
+              <label
+                >Text X
+                <input id="designerTextX" type="number" min="0" value="20" />
+              </label>
+              <label
+                >Text Y
+                <input id="designerTextY" type="number" min="0" value="70" />
+              </label>
+            </div>
+
+            <div class="row">
+              <label
+                >Text color
+                <select id="designerTextColor">
+                  <option value="black" selected>black</option>
+                  <option value="red">red</option>
+                </select>
+              </label>
+              <label
+                >Background
+                <select id="designerBackground">
+                  <option value="white" selected>white</option>
+                  <option value="black">black</option>
+                  <option value="red">red</option>
+                </select>
+              </label>
+            </div>
+
+            <div class="btns">
+              <button id="designerFillBtn">Fill Background</button>
+              <button id="designerUseUploadBtn">
+                Use Uploaded Image as Base
+              </button>
+              <button id="designerAddTextBtn">Add Text</button>
+              <button id="designerUseBtn" class="primary">
+                Use Designer Image
+              </button>
+              <button id="designerSendBtn" class="primary">
+                Send Designer Image
+              </button>
+            </div>
           </div>
 
           <p class="hint">
@@ -348,6 +449,7 @@
         notifyUuid: document.getElementById("notifyUuid"),
         namePrefix: document.getElementById("namePrefix"),
         chunkSize: document.getElementById("chunkSize"),
+        writeMode: document.getElementById("writeMode"),
         ledHex: document.getElementById("ledHex"),
         panelWidth: document.getElementById("panelWidth"),
         panelHeight: document.getElementById("panelHeight"),
@@ -355,6 +457,19 @@
         prefixHex: document.getElementById("prefixHex"),
         imageInput: document.getElementById("imageInput"),
         preview: document.getElementById("preview"),
+        clearScreenBtn: document.getElementById("clearScreenBtn"),
+        designerCanvas: document.getElementById("designerCanvas"),
+        designerText: document.getElementById("designerText"),
+        designerFontSize: document.getElementById("designerFontSize"),
+        designerTextX: document.getElementById("designerTextX"),
+        designerTextY: document.getElementById("designerTextY"),
+        designerTextColor: document.getElementById("designerTextColor"),
+        designerBackground: document.getElementById("designerBackground"),
+        designerFillBtn: document.getElementById("designerFillBtn"),
+        designerUseUploadBtn: document.getElementById("designerUseUploadBtn"),
+        designerAddTextBtn: document.getElementById("designerAddTextBtn"),
+        designerUseBtn: document.getElementById("designerUseBtn"),
+        designerSendBtn: document.getElementById("designerSendBtn"),
         deviceName: document.getElementById("deviceName"),
         connState: document.getElementById("connState"),
         status: document.getElementById("status"),
@@ -369,7 +484,15 @@
       let selectedDevice = null;
       let gattServer = null;
       let writeCharacteristic = null;
-      let imageBitmap = null;
+      let writeSupport = {
+        withResponse: false,
+        withoutResponse: false,
+      };
+      let imageSource = null;
+      let uploadedBitmap = null;
+      const designerCtx = ui.designerCanvas.getContext("2d", {
+        willReadFrequently: true,
+      });
 
       function setStatus(text) {
         ui.status.textContent = text;
@@ -456,7 +579,7 @@
       }
 
       function buildBitmapPayload() {
-        if (!imageBitmap) {
+        if (!imageSource) {
           throw new Error("No image selected.");
         }
 
@@ -468,7 +591,7 @@
         canvas.width = targetWidth;
         canvas.height = targetHeight;
         const ctx = canvas.getContext("2d", { willReadFrequently: true });
-        ctx.drawImage(imageBitmap, 0, 0, targetWidth, targetHeight);
+        ctx.drawImage(imageSource, 0, 0, targetWidth, targetHeight);
 
         const { data } = ctx.getImageData(0, 0, targetWidth, targetHeight);
         const padW = Math.ceil(targetWidth / 8) * 8;
@@ -528,6 +651,89 @@
         return payload;
       }
 
+      function colorNameToHex(name) {
+        if (name === "red") {
+          return "#e60000";
+        }
+        if (name === "black") {
+          return "#000000";
+        }
+        return "#ffffff";
+      }
+
+      function refreshDesignerCanvasSize() {
+        const targetWidth = Number.parseInt(ui.panelWidth.value, 10) || 400;
+        const targetHeight = Number.parseInt(ui.panelHeight.value, 10) || 300;
+        const oldData = designerCtx.getImageData(
+          0,
+          0,
+          ui.designerCanvas.width,
+          ui.designerCanvas.height,
+        );
+        const tmp = document.createElement("canvas");
+        tmp.width = ui.designerCanvas.width;
+        tmp.height = ui.designerCanvas.height;
+        tmp.getContext("2d").putImageData(oldData, 0, 0);
+
+        ui.designerCanvas.width = targetWidth;
+        ui.designerCanvas.height = targetHeight;
+        designerCtx.fillStyle = "#ffffff";
+        designerCtx.fillRect(0, 0, targetWidth, targetHeight);
+        designerCtx.drawImage(tmp, 0, 0, targetWidth, targetHeight);
+      }
+
+      function setPreviewFromCanvas(canvas) {
+        ui.preview.src = canvas.toDataURL("image/png");
+      }
+
+      function useCanvasAsImageSource(canvas, label) {
+        imageSource = canvas;
+        setPreviewFromCanvas(canvas);
+        setStatus(label);
+      }
+
+      function fillDesignerBackground() {
+        designerCtx.fillStyle = colorNameToHex(ui.designerBackground.value);
+        designerCtx.fillRect(
+          0,
+          0,
+          ui.designerCanvas.width,
+          ui.designerCanvas.height,
+        );
+        setStatus("Designer background filled.");
+      }
+
+      function addDesignerText() {
+        const text = ui.designerText.value;
+        if (!text.trim()) {
+          throw new Error("Enter text before adding.");
+        }
+        const x = Number.parseInt(ui.designerTextX.value, 10) || 0;
+        const y = Number.parseInt(ui.designerTextY.value, 10) || 0;
+        const size = Math.max(
+          8,
+          Number.parseInt(ui.designerFontSize.value, 10) || 36,
+        );
+
+        designerCtx.fillStyle = colorNameToHex(ui.designerTextColor.value);
+        designerCtx.font = `${size}px Segoe UI`;
+        designerCtx.textBaseline = "top";
+        designerCtx.fillText(text, x, y);
+        setStatus("Text added to designer canvas.");
+      }
+
+      function createWhiteCanvasSource() {
+        const targetWidth = Number.parseInt(ui.panelWidth.value, 10) || 400;
+        const targetHeight = Number.parseInt(ui.panelHeight.value, 10) || 300;
+        const whiteCanvas = document.createElement("canvas");
+        whiteCanvas.width = targetWidth;
+        whiteCanvas.height = targetHeight;
+        const ctx = whiteCanvas.getContext("2d");
+        ctx.fillStyle = "#ffffff";
+        ctx.fillRect(0, 0, targetWidth, targetHeight);
+        return whiteCanvas;
+      }
+
       async function pickDevice() {
         if (!navigator.bluetooth) {
           throw new Error("Web Bluetooth is not available in this browser.");
@@ -559,6 +765,7 @@
           ui.connState.textContent = "disconnected";
           writeCharacteristic = null;
           gattServer = null;
+          writeSupport = { withResponse: false, withoutResponse: false };
           setStatus("Device disconnected.");
         });
 
@@ -578,6 +785,20 @@
 
         const service = await gattServer.getPrimaryService(serviceUuid);
         writeCharacteristic = await service.getCharacteristic(writeUuid);
+        writeSupport = {
+          withResponse: Boolean(writeCharacteristic?.properties?.write),
+          withoutResponse: Boolean(
+            writeCharacteristic?.properties?.writeWithoutResponse,
+          ),
+        };
+        addLog(
+          `Characteristic write support: withResponse=${writeSupport.withResponse}, withoutResponse=${writeSupport.withoutResponse}`,
+        );
+        if (!writeSupport.withResponse && !writeSupport.withoutResponse) {
+          throw new Error(
+            "Selected characteristic is not writable (no write properties).",
+          );
+        }
         setStatus("Connected and ready to write.");
       }
 
@@ -588,11 +809,48 @@
         ui.connState.textContent = "disconnected";
         writeCharacteristic = null;
         gattServer = null;
+        writeSupport = { withResponse: false, withoutResponse: false };
         setStatus("Disconnected.");
       }
 
+      function chooseWriteMode() {
+        const requested = ui.writeMode.value;
+        if (requested === "with-response") {
+          if (!writeSupport.withResponse) {
+            throw new Error(
+              "Write mode 'with response' is not supported by this characteristic.",
+            );
+          }
+          return "with-response";
+        }
+        if (requested === "without-response") {
+          if (!writeSupport.withoutResponse) {
+            throw new Error(
+              "Write mode 'without response' is not supported by this characteristic.",
+            );
+          }
+          return "without-response";
+        }
+
+        if (writeSupport.withoutResponse) {
+          return "without-response";
+        }
+        if (writeSupport.withResponse) {
+          return "with-response";
+        }
+        throw new Error("No supported write mode for this characteristic.");
+      }
+
+      async function writeChunk(chunk, mode) {
+        if (mode === "without-response") {
+          await writeCharacteristic.writeValueWithoutResponse(chunk);
+          return;
+        }
+        await writeCharacteristic.writeValueWithResponse(chunk);
+      }
+
       async function writePayloadWithFallback(payload) {
-        if (!writeCharacteristic) {
+        if (!writeCharacteristic || !selectedDevice?.gatt?.connected) {
           throw new Error("Write characteristic not ready. Connect first.");
         }
 
@@ -605,22 +863,40 @@
           chunks.push(payload.slice(i, i + chunkSize));
         }
 
+        const primaryMode = chooseWriteMode();
+        const fallbackMode =
+          primaryMode === "with-response"
+            ? "without-response"
+            : "with-response";
+
         try {
           for (const chunk of chunks) {
-            await writeCharacteristic.writeValueWithResponse(chunk);
+            await writeChunk(chunk, primaryMode);
             await new Promise((r) => setTimeout(r, 50));
           }
           setStatus(
-            `Write successful (${chunks.length} chunk(s), with response).`,
+            `Write successful (${chunks.length} chunk(s), ${primaryMode}).`,
           );
         } catch (error) {
-          addLog(`writeValueWithResponse failed: ${error}`);
+          addLog(`Primary write failed (${primaryMode}): ${error}`);
+          if (!selectedDevice?.gatt?.connected) {
+            throw new Error(
+              "Device disconnected during write. Try reconnecting and set write mode to without response.",
+            );
+          }
+          const canFallback =
+            (fallbackMode === "with-response" && writeSupport.withResponse) ||
+            (fallbackMode === "without-response" &&
+              writeSupport.withoutResponse);
+          if (!canFallback) {
+            throw error;
+          }
           for (const chunk of chunks) {
-            await writeCharacteristic.writeValueWithoutResponse(chunk);
+            await writeChunk(chunk, fallbackMode);
             await new Promise((r) => setTimeout(r, 50));
           }
           setStatus(
-            `Write successful (${chunks.length} chunk(s), without response).`,
+            `Write successful (${chunks.length} chunk(s), fallback ${fallbackMode}).`,
           );
         }
       }
@@ -645,18 +921,97 @@
         setStatus("Image sent successfully.");
       }
 
+      async function clearDisplayWithWhiteImage() {
+        useCanvasAsImageSource(
+          createWhiteCanvasSource(),
+          "Prepared white image to clear display.",
+        );
+        await sendImage();
+        setStatus("Display clear command sent (white image uploaded).");
+      }
+
       ui.imageInput.addEventListener("change", async (event) => {
         const file = event.target.files?.[0];
         if (!file) {
-          imageBitmap = null;
+          imageSource = null;
+          uploadedBitmap = null;
           ui.preview.removeAttribute("src");
           return;
         }
 
         const imageUrl = URL.createObjectURL(file);
         ui.preview.src = imageUrl;
-        imageBitmap = await createImageBitmap(file);
+        uploadedBitmap = await createImageBitmap(file);
+        imageSource = uploadedBitmap;
         setStatus(`Loaded image: ${file.name}`);
+      });
+
+      ui.panelWidth.addEventListener("change", refreshDesignerCanvasSize);
+      ui.panelHeight.addEventListener("change", refreshDesignerCanvasSize);
+
+      ui.clearScreenBtn.addEventListener("click", async () => {
+        try {
+          await clearDisplayWithWhiteImage();
+        } catch (error) {
+          setStatus(`Clear display failed: ${error.message || error}`);
+        }
+      });
+
+      ui.designerFillBtn.addEventListener("click", () => {
+        try {
+          fillDesignerBackground();
+        } catch (error) {
+          setStatus(`Designer fill failed: ${error.message || error}`);
+        }
+      });
+
+      ui.designerUseUploadBtn.addEventListener("click", () => {
+        try {
+          if (!uploadedBitmap) {
+            throw new Error("Upload an image first.");
+          }
+          designerCtx.drawImage(
+            uploadedBitmap,
+            0,
+            0,
+            ui.designerCanvas.width,
+            ui.designerCanvas.height,
+          );
+          setStatus("Uploaded image placed in designer canvas.");
+        } catch (error) {
+          setStatus(`Use upload failed: ${error.message || error}`);
+        }
+      });
+
+      ui.designerAddTextBtn.addEventListener("click", () => {
+        try {
+          addDesignerText();
+        } catch (error) {
+          setStatus(`Add text failed: ${error.message || error}`);
+        }
+      });
+
+      ui.designerUseBtn.addEventListener("click", () => {
+        try {
+          useCanvasAsImageSource(
+            ui.designerCanvas,
+            "Designer image selected for sending.",
+          );
+        } catch (error) {
+          setStatus(`Select designer image failed: ${error.message || error}`);
+        }
+      });
+
+      ui.designerSendBtn.addEventListener("click", async () => {
+        try {
+          useCanvasAsImageSource(
+            ui.designerCanvas,
+            "Designer image selected for sending.",
+          );
+          await sendImage();
+        } catch (error) {
+          setStatus(`Send designer image failed: ${error.message || error}`);
+        }
       });
 
       ui.pickBtn.addEventListener("click", async () => {
@@ -698,6 +1053,9 @@
           setStatus(`Send failed: ${error.message || error}`);
         }
       });
+
+      fillDesignerBackground();
+      useCanvasAsImageSource(ui.designerCanvas, "Designer canvas ready.");
     </script>
   </body>
 </html>
