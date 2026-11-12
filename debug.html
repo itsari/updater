@@ -256,6 +256,7 @@
           <button class="primary" id="ledOnBtn">Turn LED ON</button>
           <button id="ledOffBtn">Turn LED OFF</button>
           <button class="warn" id="identifyBtn">Identify Screen</button>
+          <button id="restoreBtn">Put Sign Back</button>
         </div>
 
         <p class="muted">
@@ -301,6 +302,7 @@
         ledOnBtn: document.getElementById("ledOnBtn"),
         ledOffBtn: document.getElementById("ledOffBtn"),
         identifyBtn: document.getElementById("identifyBtn"),
+        restoreBtn: document.getElementById("restoreBtn"),
         copyLogBtn: document.getElementById("copyLogBtn"),
         downloadLogBtn: document.getElementById("downloadLogBtn"),
         clearLogBtn: document.getElementById("clearLogBtn"),
@@ -984,6 +986,31 @@
         );
       }
 
+      async function sendRestoreSign() {
+        const custom = hexToBytes(ui.apkOpHex.value || "");
+        if (custom.length) {
+          const mac = ui.manualMac.value.trim();
+          if (!mac) {
+            throw new Error(
+              "MAC is required to restore using custom framed payload",
+            );
+          }
+          await ensureConnected();
+          const packets = roomSignsFramedPackets(mac, custom);
+          await addLog(
+            `RESTORE: re-sending custom payload as ${packets.length} framed packet(s)`,
+          );
+          await writeSequence(packets, "without-response", "RESTORE");
+          setStatus("Put Sign Back sent using custom framed payload.");
+          return;
+        }
+
+        await addLog(
+          "RESTORE: no custom payload set, falling back to LED OFF command.",
+        );
+        await sendLedCommand("off");
+      }
+
       async function runStage(stage) {
         updateStage(stage.name);
         setStatus(`Running stage: ${stage.name}`);
@@ -1169,6 +1196,14 @@
           await sendIdentify();
         } catch (error) {
           setStatus(`Identify failed: ${formatError(error)}`);
+        }
+      });
+
+      ui.restoreBtn.addEventListener("click", async () => {
+        try {
+          await sendRestoreSign();
+        } catch (error) {
+          setStatus(`Put Sign Back failed: ${formatError(error)}`);
         }
       });
 
