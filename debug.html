@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>BLE LED Stage Debugger</title>
+    <title>BLE Stage Debugger</title>
     <style>
       :root {
         --bg: #f4f2ed;
@@ -156,10 +156,10 @@
       <div class="stage" id="stageBanner">Current Stage: idle</div>
 
       <section class="card">
-        <h1>BLE LED Stage Debugger</h1>
+        <h1>BLE Stage Debugger</h1>
         <p class="muted">
-          APK-informed standalone tester: connect to a BLE tag, run all LED
-          write methods in sequence, and copy the complete log.
+          APK-informed standalone tester: connect to a BLE tag, run write
+          methods in sequence, and copy the complete log.
         </p>
       </section>
 
@@ -209,14 +209,10 @@
           </label>
         </div>
 
-        <div class="grid">
+        <div class="grid one">
           <label>
             Write delay between packets (ms)
             <input id="writeDelayMs" type="number" min="10" value="80" />
-          </label>
-          <label>
-            Blink pause (ms)
-            <input id="blinkPauseMs" type="number" min="50" value="350" />
           </label>
         </div>
 
@@ -232,31 +228,18 @@
         <h2>Command Inputs</h2>
         <div class="grid">
           <label>
-            LED ON hex
-            <input id="ledOnHex" value="01 00" />
-          </label>
-          <label>
-            LED OFF hex
-            <input id="ledOffHex" value="01 00 00" />
-          </label>
-        </div>
-
-        <div class="grid">
-          <label>
             Tag MAC for RoomSigns framing (optional)
             <input id="manualMac" placeholder="AA:BB:CC:DD:EE:FF" />
           </label>
           <label>
-            Custom framed payload hex (optional)
+            Custom payload hex
             <input id="apkOpHex" value="01 00" />
           </label>
         </div>
 
         <div class="btns">
-          <button class="primary" id="ledOnBtn">Turn LED ON</button>
-          <button id="ledOffBtn">Turn LED OFF</button>
           <button class="warn" id="identifyBtn">Identify Screen</button>
-          <button id="restoreBtn">Put Sign Back</button>
+          <button id="restoreBtn">Re-send Custom Payload</button>
         </div>
 
         <p class="muted">
@@ -288,9 +271,6 @@
         namePrefix: document.getElementById("namePrefix"),
         autoReconnect: document.getElementById("autoReconnect"),
         writeDelayMs: document.getElementById("writeDelayMs"),
-        blinkPauseMs: document.getElementById("blinkPauseMs"),
-        ledOnHex: document.getElementById("ledOnHex"),
-        ledOffHex: document.getElementById("ledOffHex"),
         manualMac: document.getElementById("manualMac"),
         apkOpHex: document.getElementById("apkOpHex"),
         status: document.getElementById("status"),
@@ -299,8 +279,6 @@
         connectBtn: document.getElementById("connectBtn"),
         runStagesBtn: document.getElementById("runStagesBtn"),
         disconnectBtn: document.getElementById("disconnectBtn"),
-        ledOnBtn: document.getElementById("ledOnBtn"),
-        ledOffBtn: document.getElementById("ledOffBtn"),
         identifyBtn: document.getElementById("identifyBtn"),
         restoreBtn: document.getElementById("restoreBtn"),
         copyLogBtn: document.getElementById("copyLogBtn"),
@@ -956,51 +934,6 @@
         }
       }
 
-      async function sendLedCommand(kind) {
-        const isOn = kind === "on";
-        const payload = hexToBytes(
-          isOn
-            ? ui.ledOnHex.value || "01 00"
-            : ui.ledOffHex.value || "01 00 00",
-        );
-        if (!payload.length) {
-          throw new Error("LED payload cannot be empty");
-        }
-
-        await ensureConnected();
-        const stageTag = isOn ? "MANUAL-ON" : "MANUAL-OFF";
-        let rawError = null;
-
-        try {
-          await addLog(
-            `${stageTag}: trying raw payload first (${payload.length} bytes)`,
-          );
-          await writeSequence([payload], "without-response", stageTag);
-          setStatus(`LED ${isOn ? "ON" : "OFF"} command sent (raw)`);
-          return;
-        } catch (error) {
-          rawError = error;
-          await addLog(`${stageTag}: raw send failed: ${formatError(error)}`);
-        }
-
-        const mac = ui.manualMac.value.trim();
-        if (!mac) {
-          throw (
-            rawError ||
-            new Error(
-              "LED command failed and MAC not available for framed fallback",
-            )
-          );
-        }
-
-        const framed = roomSignsFramedPackets(mac, payload);
-        await addLog(
-          `${stageTag}: trying framed fallback (${framed.length} packet(s))`,
-        );
-        await writeSequence(framed, "without-response", stageTag);
-        setStatus(`LED ${isOn ? "ON" : "OFF"} command sent (framed fallback)`);
-      }
-
       async function sendIdentify(stageNumber = null) {
         const mac = ui.manualMac.value.trim();
         if (!mac) {
@@ -1027,27 +960,22 @@
 
       async function sendRestoreSign() {
         const custom = hexToBytes(ui.apkOpHex.value || "");
-        if (custom.length) {
-          const mac = ui.manualMac.value.trim();
-          if (!mac) {
-            throw new Error(
-              "MAC is required to restore using custom framed payload",
-            );
-          }
-          await ensureConnected();
-          const packets = roomSignsFramedPackets(mac, custom);
-          await addLog(
-            `RESTORE: re-sending custom payload as ${packets.length} framed packet(s)`,
-          );
-          await writeSequence(packets, "without-response", "RESTORE");
-          setStatus("Put Sign Back sent using custom framed payload.");
-          return;
+        if (!custom.length) {
+          throw new Error("Custom payload is empty. Enter payload hex first.");
         }
 
+        const mac = ui.manualMac.value.trim();
+        if (!mac) {
+          throw new Error("MAC is required for framed custom payload send");
+        }
+
+        await ensureConnected();
+        const packets = roomSignsFramedPackets(mac, custom);
         await addLog(
-          "RESTORE: no custom payload set, falling back to LED OFF command.",
+          `RESTORE: re-sending custom payload as ${packets.length} framed packet(s)`,
         );
-        await sendLedCommand("off");
+        await writeSequence(packets, "without-response", "RESTORE");
+        setStatus("Custom payload sent as framed packets.");
       }
 
       async function runStage(stage, stageNumber) {
@@ -1070,84 +998,56 @@
         }
         runnerActive = true;
         shouldStopRunner = false;
-        const pause = Math.max(
-          50,
-          Number.parseInt(ui.blinkPauseMs.value, 10) || 350,
-        );
-        const ledOn = hexToBytes(ui.ledOnHex.value || "01 00");
-        const ledOff = hexToBytes(ui.ledOffHex.value || "01 00 00");
+        const custom = hexToBytes(ui.apkOpHex.value || "");
+        const short01 = new Uint8Array([0x01]);
+        const short00 = new Uint8Array([0x00]);
 
         const stages = [
           {
-            name: "S1 raw ON with-response",
-            run: async () => writeSequence([ledOn], "with-response", "S1"),
+            name: "S1 short command 01",
+            run: async () => writeSequence([short01], "with-response", "S1"),
           },
           {
-            name: "S2 raw OFF with-response",
-            run: async () => writeSequence([ledOff], "with-response", "S2"),
+            name: "S2 short command 00",
+            run: async () => writeSequence([short00], "with-response", "S2"),
           },
           {
-            name: "S3 raw blink with-response",
+            name: "S3 custom payload with-response",
             run: async () => {
-              await writeSequence([ledOn], "with-response", "S3");
-              await new Promise((r) => setTimeout(r, pause));
-              await writeSequence([ledOff], "with-response", "S3");
+              if (!custom.length) {
+                await addLog("S3 skipped: custom payload not provided");
+                return;
+              }
+              await writeSequence([custom], "with-response", "S3");
             },
           },
           {
-            name: "S4 raw ON without-response",
-            run: async () => writeSequence([ledOn], "without-response", "S4"),
-          },
-          {
-            name: "S5 raw OFF without-response",
-            run: async () => writeSequence([ledOff], "without-response", "S5"),
-          },
-          {
-            name: "S6 short command 01",
-            run: async () =>
-              writeSequence([new Uint8Array([0x01])], "with-response", "S6"),
-          },
-          {
-            name: "S7 short command 00",
-            run: async () =>
-              writeSequence([new Uint8Array([0x00])], "with-response", "S7"),
-          },
-          {
-            name: "S8 repeat ON x3",
-            run: async () =>
-              writeSequence([ledOn, ledOn, ledOn], "with-response", "S8"),
-          },
-          {
-            name: "S9 RoomSigns framed LED ON",
+            name: "S4 custom payload without-response",
             run: async () => {
-              const mac = ui.manualMac.value.trim();
-              if (!mac) {
-                await addLog("S9 skipped: MAC not provided");
+              if (!custom.length) {
+                await addLog("S4 skipped: custom payload not provided");
                 return;
               }
-              const packets = roomSignsFramedPackets(mac, ledOn);
-              await addLog(
-                `S9: built ${packets.length} frame packet(s) from ${ledOn.length} payload byte(s)`,
-              );
-              await writeSequence(packets, "without-response", "S9");
+              await writeSequence([custom], "without-response", "S4");
             },
           },
           {
-            name: "S10 RoomSigns framed LED OFF/custom",
+            name: "S5 RoomSigns framed custom payload",
             run: async () => {
               const mac = ui.manualMac.value.trim();
               if (!mac) {
-                await addLog("S10 skipped: MAC not provided");
+                await addLog("S5 skipped: MAC not provided");
                 return;
               }
-
-              const custom = hexToBytes(ui.apkOpHex.value || "");
-              const payload = custom.length ? custom : ledOff;
-              const packets = roomSignsFramedPackets(mac, payload);
+              if (!custom.length) {
+                await addLog("S5 skipped: custom payload not provided");
+                return;
+              }
+              const packets = roomSignsFramedPackets(mac, custom);
               await addLog(
-                `S10: built ${packets.length} frame packet(s) from ${payload.length} payload byte(s)`,
+                `S5: built ${packets.length} frame packet(s) from ${custom.length} payload byte(s)`,
               );
-              await writeSequence(packets, "without-response", "S10");
+              await writeSequence(packets, "without-response", "S5");
             },
           },
         ];
@@ -1203,7 +1103,7 @@
           }
           await connectDevice();
           await addLog(
-            "Connection complete. Use Turn LED ON/OFF for quick test or Run All Stages for diagnostics.",
+            "Connection complete. Use Identify Screen or Run All Stages for diagnostics.",
           );
         } catch (error) {
           setStatus(`Connect failed: ${formatError(error)}`);
@@ -1215,22 +1115,6 @@
           void runAllStages();
         } catch (error) {
           setStatus(`Run stages failed: ${formatError(error)}`);
-        }
-      });
-
-      ui.ledOnBtn.addEventListener("click", async () => {
-        try {
-          await sendLedCommand("on");
-        } catch (error) {
-          setStatus(`LED ON failed: ${formatError(error)}`);
-        }
-      });
-
-      ui.ledOffBtn.addEventListener("click", async () => {
-        try {
-          await sendLedCommand("off");
-        } catch (error) {
-          setStatus(`LED OFF failed: ${formatError(error)}`);
         }
       });
 
