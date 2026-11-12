@@ -3,16 +3,17 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>BLE LED Debug Tool</title>
+    <title>BLE LED Stage Debugger</title>
     <style>
       :root {
-        --bg: #f5f1e9;
+        --bg: #f4f2ed;
         --card: #fffdf9;
-        --line: #d8cfbf;
-        --ink: #1f1d1a;
-        --muted: #6a6258;
-        --accent: #166b63;
-        --warn: #cb5f1f;
+        --ink: #1f1f1f;
+        --muted: #6b665c;
+        --line: #d8d1c3;
+        --ok: #0f766e;
+        --warn: #b45309;
+        --bad: #b91c1c;
       }
 
       * {
@@ -21,25 +22,36 @@
 
       body {
         margin: 0;
-        font-family: "Segoe UI", "Helvetica Neue", sans-serif;
+        font-family: "Segoe UI", Tahoma, sans-serif;
         color: var(--ink);
         background:
-          radial-gradient(700px 320px at 10% -10%, #fff8ef 0%, transparent 70%),
-          radial-gradient(700px 320px at 90% -10%, #eefdf8 0%, transparent 70%),
+          radial-gradient(700px 300px at 5% -10%, #fff6ea 0%, transparent 70%),
+          radial-gradient(700px 300px at 95% -10%, #eafff8 0%, transparent 70%),
           var(--bg);
       }
 
       .wrap {
-        max-width: 920px;
+        max-width: 980px;
         margin: 0 auto;
-        padding: 20px;
+        padding: 16px;
         display: grid;
-        gap: 14px;
+        gap: 12px;
+      }
+
+      .stage {
+        position: sticky;
+        top: 8px;
+        z-index: 9;
+        border: 1px solid #c6ddda;
+        background: #ecf8f7;
+        color: #11413d;
+        border-radius: 10px;
+        padding: 10px 12px;
       }
 
       .card {
-        background: var(--card);
         border: 1px solid var(--line);
+        background: var(--card);
         border-radius: 12px;
         padding: 14px;
       }
@@ -50,11 +62,11 @@
       }
 
       h1 {
-        font-size: 1.5rem;
+        font-size: 1.4rem;
       }
 
       h2 {
-        font-size: 1.05rem;
+        font-size: 1rem;
       }
 
       .muted {
@@ -62,14 +74,13 @@
         margin: 0;
       }
 
-      .row {
+      .grid {
         display: grid;
         grid-template-columns: 1fr 1fr;
         gap: 10px;
-        margin-bottom: 10px;
       }
 
-      .row.single {
+      .grid.one {
         grid-template-columns: 1fr;
       }
 
@@ -81,18 +92,18 @@
 
       input,
       select,
-      button,
-      textarea {
+      textarea,
+      button {
         font: inherit;
+        border: 1px solid #c7bea9;
         border-radius: 8px;
-        border: 1px solid #c8bca8;
         padding: 9px 10px;
         background: #fffcf7;
         color: var(--ink);
       }
 
       textarea {
-        min-height: 220px;
+        min-height: 250px;
         resize: vertical;
       }
 
@@ -107,28 +118,34 @@
       }
 
       button.primary {
-        background: var(--accent);
-        color: #fff;
+        background: #0f766e;
         border-color: transparent;
+        color: #fff;
       }
 
       button.warn {
-        background: var(--warn);
-        color: #fff;
+        background: #b45309;
         border-color: transparent;
+        color: #fff;
+      }
+
+      button.bad {
+        background: #b91c1c;
+        border-color: transparent;
+        color: #fff;
       }
 
       .status {
-        border-left: 4px solid var(--accent);
-        background: #eff8f6;
-        color: #11413b;
+        border-left: 4px solid var(--ok);
         border-radius: 8px;
-        padding: 10px;
-        min-height: 42px;
+        background: #edf9f7;
+        color: #134640;
+        padding: 9px 10px;
+        min-height: 40px;
       }
 
-      @media (max-width: 860px) {
-        .row {
+      @media (max-width: 900px) {
+        .grid {
           grid-template-columns: 1fr;
         }
       }
@@ -136,18 +153,19 @@
   </head>
   <body>
     <main class="wrap">
+      <div class="stage" id="stageBanner">Current Stage: idle</div>
+
       <section class="card">
-        <h1>BLE LED Debug Tool</h1>
+        <h1>BLE LED Stage Debugger</h1>
         <p class="muted">
-          Dedicated debug page for connect + LED on/off tests. All events are
-          logged and can be saved to a file.
+          APK-informed standalone tester: connect to a BLE tag, run all LED
+          write methods in sequence, and copy the complete log.
         </p>
       </section>
 
       <section class="card">
         <h2>Connection</h2>
-
-        <div class="row single">
+        <div class="grid one">
           <label>
             Service UUID
             <input
@@ -157,7 +175,7 @@
           </label>
         </div>
 
-        <div class="row single">
+        <div class="grid one">
           <label>
             Write Characteristic UUID
             <input
@@ -167,24 +185,23 @@
           </label>
         </div>
 
-        <div class="row">
+        <div class="grid one">
+          <label>
+            Notify Characteristic UUID
+            <input
+              id="notifyUuid"
+              value="00001526-1212-efde-1523-785feabcd123"
+            />
+          </label>
+        </div>
+
+        <div class="grid">
           <label>
             Device name prefix
             <input id="namePrefix" value="easyTag" />
           </label>
           <label>
-            Write mode
-            <select id="writeMode">
-              <option value="auto" selected>auto</option>
-              <option value="with-response">with response</option>
-              <option value="without-response">without response</option>
-            </select>
-          </label>
-        </div>
-
-        <div class="row single">
-          <label>
-            <span>Auto reconnect on disconnect</span>
+            Auto reconnect
             <select id="autoReconnect">
               <option value="on" selected>on</option>
               <option value="off">off</option>
@@ -192,17 +209,26 @@
           </label>
         </div>
 
+        <div class="grid">
+          <label>
+            Write delay between packets (ms)
+            <input id="writeDelayMs" type="number" min="10" value="80" />
+          </label>
+          <label>
+            Blink pause (ms)
+            <input id="blinkPauseMs" type="number" min="50" value="350" />
+          </label>
+        </div>
+
         <div class="btns">
-          <button id="pickBtn" class="primary">Pick Device</button>
-          <button id="connectBtn">Connect</button>
-          <button id="disconnectBtn">Disconnect</button>
+          <button class="primary" id="connectBtn">Connect</button>
+          <button id="disconnectBtn" class="bad">Disconnect</button>
         </div>
       </section>
 
       <section class="card">
-        <h2>LED Commands</h2>
-
-        <div class="row">
+        <h2>Command Inputs</h2>
+        <div class="grid">
           <label>
             LED ON hex
             <input id="ledOnHex" value="01 00" />
@@ -213,38 +239,30 @@
           </label>
         </div>
 
-        <div class="row">
+        <div class="grid">
           <label>
-            Blink delay (ms)
-            <input id="blinkDelayMs" type="number" min="50" value="300" />
+            Tag MAC for APK framed method (optional)
+            <input id="manualMac" placeholder="AA:BB:CC:DD:EE:FF" />
           </label>
           <label>
-            Chunk size
-            <input
-              id="chunkSize"
-              type="number"
-              min="20"
-              max="512"
-              value="180"
-            />
+            APK op byte (task10 payload[0])
+            <input id="apkOpHex" value="00" />
           </label>
         </div>
 
-        <div class="btns">
-          <button id="ledOnBtn" class="primary">LED ON</button>
-          <button id="ledOffBtn" class="warn">LED OFF</button>
-          <button id="blinkBtn">Blink Once</button>
-        </div>
+        <p class="muted">
+          Note: Web Bluetooth cannot expose MAC address. To test APK-style
+          encrypted frames, type the tag MAC manually.
+        </p>
       </section>
 
       <section class="card">
-        <h2>Log</h2>
-        <div id="status" class="status">Ready.</div>
+        <h2>Logs</h2>
+        <div class="status" id="status">Ready.</div>
 
         <div class="btns" style="margin-top: 10px; margin-bottom: 8px">
-          <button id="chooseLogFileBtn">Choose Log File</button>
-          <button id="downloadLogBtn">Download Log</button>
           <button id="copyLogBtn">Copy Log</button>
+          <button id="downloadLogBtn">Download Log</button>
           <button id="clearLogBtn">Clear Log</button>
         </div>
 
@@ -254,38 +272,44 @@
 
     <script>
       const ui = {
+        stageBanner: document.getElementById("stageBanner"),
         serviceUuid: document.getElementById("serviceUuid"),
         writeUuid: document.getElementById("writeUuid"),
+        notifyUuid: document.getElementById("notifyUuid"),
         namePrefix: document.getElementById("namePrefix"),
-        writeMode: document.getElementById("writeMode"),
         autoReconnect: document.getElementById("autoReconnect"),
+        writeDelayMs: document.getElementById("writeDelayMs"),
+        blinkPauseMs: document.getElementById("blinkPauseMs"),
         ledOnHex: document.getElementById("ledOnHex"),
         ledOffHex: document.getElementById("ledOffHex"),
-        blinkDelayMs: document.getElementById("blinkDelayMs"),
-        chunkSize: document.getElementById("chunkSize"),
+        manualMac: document.getElementById("manualMac"),
+        apkOpHex: document.getElementById("apkOpHex"),
         status: document.getElementById("status"),
         log: document.getElementById("log"),
-        pickBtn: document.getElementById("pickBtn"),
         connectBtn: document.getElementById("connectBtn"),
         disconnectBtn: document.getElementById("disconnectBtn"),
-        ledOnBtn: document.getElementById("ledOnBtn"),
-        ledOffBtn: document.getElementById("ledOffBtn"),
-        blinkBtn: document.getElementById("blinkBtn"),
-        chooseLogFileBtn: document.getElementById("chooseLogFileBtn"),
-        downloadLogBtn: document.getElementById("downloadLogBtn"),
         copyLogBtn: document.getElementById("copyLogBtn"),
+        downloadLogBtn: document.getElementById("downloadLogBtn"),
         clearLogBtn: document.getElementById("clearLogBtn"),
       };
+
+      const CRC_TABLE = [
+        0x0000, 0x8005, 0x800f, 0x000a, 0x801b, 0x001e, 0x0014, 0x8011, 0x8033,
+        0x0036, 0x003c, 0x8039, 0x0028, 0x802d, 0x8027, 0x0022,
+      ];
 
       let selectedDevice = null;
       let gattServer = null;
       let writeCharacteristic = null;
+      let notifyCharacteristic = null;
       let writeSupport = { withResponse: false, withoutResponse: false };
       let reconnectInProgress = false;
       let manualDisconnectRequested = false;
+      let shouldStopRunner = false;
+      let debugStarted = false;
+      let runnerActive = false;
 
       let logText = "";
-      let logFileHandle = null;
 
       function formatError(error) {
         if (!error) {
@@ -294,34 +318,6 @@
         const msg = error.message || String(error);
         const name = error.name ? `${error.name}: ` : "";
         return `${name}${msg}`;
-      }
-
-      async function flushLogToChosenFile() {
-        if (!logFileHandle) {
-          return;
-        }
-        const writable = await logFileHandle.createWritable();
-        await writable.write(logText);
-        await writable.close();
-      }
-
-      async function addLog(line) {
-        const stamp = new Date().toLocaleTimeString();
-        const full = `[${stamp}] ${line}`;
-        logText += `${full}\n`;
-        ui.log.value = logText;
-        ui.log.scrollTop = ui.log.scrollHeight;
-
-        try {
-          await flushLogToChosenFile();
-        } catch (error) {
-          ui.status.textContent = `Log file write failed: ${formatError(error)}`;
-        }
-      }
-
-      function setStatus(text) {
-        ui.status.textContent = text;
-        void addLog(text);
       }
 
       function normalizeHex(value) {
@@ -343,90 +339,118 @@
         return out;
       }
 
-      function bytesToHex(bytes) {
-        return Array.from(bytes, (b) => b.toString(16).padStart(2, "0"))
-          .join("")
-          .toUpperCase();
-      }
-
-      function chooseMode() {
-        const request = ui.writeMode.value;
-        if (request === "with-response") {
-          if (!writeSupport.withResponse) {
-            throw new Error("with-response not supported by characteristic");
-          }
-          return "with-response";
-        }
-        if (request === "without-response") {
-          if (!writeSupport.withoutResponse) {
-            throw new Error("without-response not supported by characteristic");
-          }
-          return "without-response";
-        }
-
-        if (writeSupport.withResponse) {
-          return "with-response";
-        }
-        if (writeSupport.withoutResponse) {
-          return "without-response";
-        }
-        throw new Error("No supported write mode");
-      }
-
-      async function writeChunk(chunk, mode) {
-        if (mode === "without-response") {
-          await writeCharacteristic.writeValueWithoutResponse(chunk);
-          return;
-        }
-        await writeCharacteristic.writeValueWithResponse(chunk);
-      }
-
-      async function writeBytes(payload) {
-        if (!writeCharacteristic || !selectedDevice?.gatt?.connected) {
-          if (ui.autoReconnect.value === "on") {
-            await addLog(
-              "Write requested while disconnected. Trying auto reconnect...",
-            );
-            await connectDevice();
-          } else {
-            throw new Error("Not connected");
-          }
-        }
-
-        const mode = chooseMode();
-        const configuredChunk = Math.min(
-          512,
-          Math.max(20, Number.parseInt(ui.chunkSize.value, 10) || 180),
+      function bytesToHex(bytes, spaced = false) {
+        const parts = Array.from(bytes, (b) =>
+          b.toString(16).padStart(2, "0").toUpperCase(),
         );
-        const chunkSize =
-          mode === "without-response"
-            ? Math.min(20, configuredChunk)
-            : configuredChunk;
+        return spaced ? parts.join(" ") : parts.join("");
+      }
 
-        const chunks = [];
-        for (let i = 0; i < payload.length; i += chunkSize) {
-          chunks.push(payload.slice(i, i + chunkSize));
-        }
+      function updateStage(text) {
+        ui.stageBanner.textContent = `Current Stage: ${text}`;
+      }
 
+      async function addLog(line) {
+        const stamp = new Date().toLocaleTimeString();
+        const full = `[${stamp}] ${line}`;
+        logText += `${full}\n`;
+        ui.log.value = logText;
+        ui.log.scrollTop = ui.log.scrollHeight;
+      }
+
+      function setStatus(text) {
+        ui.status.textContent = text;
+        void addLog(text);
+      }
+
+      async function onNotification(event) {
+        const bytes = new Uint8Array(event.target.value.buffer);
         await addLog(
-          `Write start: mode=${mode}, payload=${payload.length}, chunks=${chunks.length}, chunkSize=${chunkSize}`,
+          `NOTIFY ${bytes.length} bytes: ${bytesToHex(bytes, true)}`,
         );
+      }
 
-        for (let i = 0; i < chunks.length; i += 1) {
-          const chunk = chunks[i];
-          await writeChunk(chunk, mode);
-          if (i < 2 || i === chunks.length - 1) {
-            await addLog(
-              `Chunk ${i + 1}/${chunks.length} (${chunk.length} bytes) sent`,
-            );
+      function crc16Nibble(buffer, length) {
+        let crc = 0x10000;
+        for (let i = 0; i < length; i += 1) {
+          let val = buffer[i];
+          for (let j = 0; j < 2; j += 1) {
+            const idx = (((crc >> 8) ^ val) >> 4) & 0x0f;
+            crc = (CRC_TABLE[idx] ^ ((crc << 4) & 0xffff)) & 0xffff;
+            val = (val << 4) & 0xff;
           }
-          await new Promise((r) => setTimeout(r, 70));
         }
+        return crc & 0xffff;
+      }
+
+      function xorMacSeed(macHex) {
+        const macBytes = hexToBytes(macHex);
+        if (macBytes.length !== 6) {
+          throw new Error("MAC must be 6 bytes (AA:BB:CC:DD:EE:FF)");
+        }
+        let x = 0;
+        for (let i = 0; i < macBytes.length; i += 1) {
+          x ^= macBytes[i];
+        }
+        return x & 0xff;
+      }
+
+      function apkTask10Packets(macAddress, opByte) {
+        const macSeed = xorMacSeed(macAddress);
+        const xorConst = 0x63;
+
+        const header = new Uint8Array(20);
+        header[0] = 0xff;
+        header[1] = 0xf0;
+        header[2] = 0x65;
+        header[3] = 0x61;
+        header[4] = 0x73;
+        header[5] = 0x79;
+        header[6] = 0x54;
+        header[7] = 0x61;
+        header[8] = 0x67;
+        header[9] = 0x5c;
+        header[10] = 0x00;
+        header[11] = 0x00;
+        header[12] = 0x00;
+        header[13] = 0x01;
+        header[14] = 0x00;
+        header[15] = 0x01;
+        header[16] = 0x42;
+        header[17] = 0x54;
+
+        const headerCrc = crc16Nibble(header, 18);
+        header[18] = (headerCrc >> 8) & 0xff;
+        header[19] = headerCrc & 0xff;
+
+        for (let i = 0; i < 20; i += 1) {
+          if (i === 9) {
+            continue;
+          }
+          header[i] ^= macSeed;
+          header[i] ^= xorConst;
+        }
+
+        const body = new Uint8Array(204);
+        body[0] = 0x00;
+        body[1] = 0x01;
+        body[2] = opByte & 0xff;
+
+        const bodyCrc = crc16Nibble(body, 202);
+        body[202] = (bodyCrc >> 8) & 0xff;
+        body[203] = bodyCrc & 0xff;
+
+        for (let i = 0; i < 204; i += 1) {
+          body[i] ^= macSeed;
+          body[i] ^= xorConst;
+        }
+
+        return [header, body];
       }
 
       async function pickDevice() {
         if (!navigator.bluetooth) {
-          throw new Error("Web Bluetooth is not available in this browser.");
+          throw new Error("Web Bluetooth is not available in this browser");
         }
 
         const serviceUuid = ui.serviceUuid.value.trim();
@@ -456,7 +480,7 @@
           gattServer = null;
           writeCharacteristic = null;
           writeSupport = { withResponse: false, withoutResponse: false };
-          setStatus("Device disconnected.");
+          setStatus("Device disconnected");
 
           if (
             ui.autoReconnect.value === "on" &&
@@ -479,12 +503,32 @@
 
         const serviceUuid = ui.serviceUuid.value.trim();
         const writeUuid = ui.writeUuid.value.trim();
+        const notifyUuid = ui.notifyUuid.value.trim();
+        await addLog(
+          `Connect start: service=${serviceUuid}, write=${writeUuid}, notify=${notifyUuid}`,
+        );
 
-        await addLog(`Connecting: service=${serviceUuid}, write=${writeUuid}`);
         gattServer = await selectedDevice.gatt.connect();
-
         const service = await gattServer.getPrimaryService(serviceUuid);
         writeCharacteristic = await service.getCharacteristic(writeUuid);
+
+        try {
+          notifyCharacteristic = await service.getCharacteristic(notifyUuid);
+          notifyCharacteristic.removeEventListener(
+            "characteristicvaluechanged",
+            onNotification,
+          );
+          notifyCharacteristic.addEventListener(
+            "characteristicvaluechanged",
+            onNotification,
+          );
+          await notifyCharacteristic.startNotifications();
+          await addLog("Notify channel enabled");
+        } catch (error) {
+          notifyCharacteristic = null;
+          await addLog(`Notify setup failed: ${formatError(error)}`);
+        }
+
         writeSupport = {
           withResponse: Boolean(writeCharacteristic?.properties?.write),
           withoutResponse: Boolean(
@@ -495,7 +539,7 @@
         await addLog(
           `Characteristic support: withResponse=${writeSupport.withResponse}, withoutResponse=${writeSupport.withoutResponse}`,
         );
-        setStatus("Connected and ready.");
+        setStatus("Connected and ready");
       }
 
       async function autoReconnect() {
@@ -504,17 +548,26 @@
         }
         reconnectInProgress = true;
         try {
-          await addLog(
-            "Auto reconnect: waiting 700ms before reconnect attempt...",
-          );
+          await addLog("Auto reconnect waiting 700ms...");
           await new Promise((r) => setTimeout(r, 700));
           await connectDevice();
-          setStatus("Auto reconnect succeeded.");
+          setStatus("Auto reconnect succeeded");
         } catch (error) {
           setStatus(`Auto reconnect failed: ${formatError(error)}`);
         } finally {
           reconnectInProgress = false;
         }
+      }
+
+      async function ensureConnected() {
+        if (selectedDevice?.gatt?.connected && writeCharacteristic) {
+          return;
+        }
+        if (ui.autoReconnect.value === "on") {
+          await connectDevice();
+          return;
+        }
+        throw new Error("Not connected");
       }
 
       async function disconnectDevice() {
@@ -524,47 +577,252 @@
         }
         gattServer = null;
         writeCharacteristic = null;
+        notifyCharacteristic = null;
         writeSupport = { withResponse: false, withoutResponse: false };
-        setStatus("Disconnected.");
+        setStatus("Disconnected");
       }
 
-      async function sendLedOn() {
-        const bytes = hexToBytes(ui.ledOnHex.value.trim() || "01 00");
-        await addLog(`LED ON write: ${bytesToHex(bytes)}`);
-        await writeBytes(bytes);
-        setStatus("LED ON command sent.");
-      }
-
-      async function sendLedOff() {
-        const bytes = hexToBytes(ui.ledOffHex.value.trim() || "01 00 00");
-        await addLog(`LED OFF write: ${bytesToHex(bytes)}`);
-        await writeBytes(bytes);
-        setStatus("LED OFF command sent.");
-      }
-
-      async function blinkOnce() {
-        const delay = Math.max(
-          50,
-          Number.parseInt(ui.blinkDelayMs.value, 10) || 300,
-        );
-        await addLog(`Blink start. Delay=${delay}ms`);
-        await sendLedOn();
-        await new Promise((r) => setTimeout(r, delay));
-        await sendLedOff();
-        setStatus("Blink sequence sent.");
-      }
-
-      ui.pickBtn.addEventListener("click", async () => {
-        try {
-          await pickDevice();
-        } catch (error) {
-          setStatus(`Pick failed: ${formatError(error)}`);
+      async function writeBytes(payload, mode) {
+        await ensureConnected();
+        if (mode === "with-response") {
+          if (!writeSupport.withResponse) {
+            throw new Error("with-response not supported by characteristic");
+          }
+          await writeCharacteristic.writeValueWithResponse(payload);
+          return;
         }
-      });
+        if (mode === "legacy-write") {
+          if (typeof writeCharacteristic.writeValue !== "function") {
+            throw new Error("legacy writeValue not supported by browser");
+          }
+          await writeCharacteristic.writeValue(payload);
+          return;
+        }
+        if (!writeSupport.withoutResponse) {
+          throw new Error("without-response not supported by characteristic");
+        }
+        await writeCharacteristic.writeValueWithoutResponse(payload);
+      }
+
+      function modesForPacket(preferredMode) {
+        const order = [];
+        if (preferredMode) {
+          order.push(preferredMode);
+        }
+        ["without-response", "with-response", "legacy-write"].forEach((m) => {
+          if (!order.includes(m)) {
+            order.push(m);
+          }
+        });
+        return order;
+      }
+
+      async function writePacketWithFallback(packet, preferredMode, stageName) {
+        const modes = modesForPacket(preferredMode);
+        let lastError = null;
+
+        for (let i = 0; i < modes.length; i += 1) {
+          const mode = modes[i];
+          try {
+            await addLog(
+              `${stageName}: write attempt ${i + 1}/${modes.length} using ${mode}`,
+            );
+            await writeBytes(packet, mode);
+            await addLog(
+              `${stageName}: write ok via ${mode} (${packet.length} bytes)`,
+            );
+            return;
+          } catch (error) {
+            lastError = error;
+            await addLog(
+              `${stageName}: write failed via ${mode}: ${formatError(error)}`,
+            );
+            if (ui.autoReconnect.value === "on") {
+              try {
+                await autoReconnect();
+              } catch (_e) {
+                // autoReconnect already logs
+              }
+            }
+          }
+        }
+
+        throw lastError || new Error("all write modes failed");
+      }
+
+      async function writeSequence(sequence, mode, stageName) {
+        const delay = Math.max(
+          10,
+          Number.parseInt(ui.writeDelayMs.value, 10) || 80,
+        );
+        for (let i = 0; i < sequence.length; i += 1) {
+          if (shouldStopRunner) {
+            throw new Error("Runner stopped by user");
+          }
+          const packet = sequence[i];
+          await addLog(
+            `${stageName}: packet ${i + 1}/${sequence.length} payload (${packet.length} bytes) ${bytesToHex(packet, true)}`,
+          );
+          await writePacketWithFallback(packet, mode, stageName);
+          if (i < sequence.length - 1) {
+            await new Promise((r) => setTimeout(r, delay));
+          }
+        }
+      }
+
+      async function runStage(stage) {
+        updateStage(stage.name);
+        setStatus(`Running stage: ${stage.name}`);
+        await addLog(`STAGE START: ${stage.name}`);
+        await stage.run();
+        await addLog(`STAGE END: ${stage.name} (write success)`);
+      }
+
+      async function runAllStages() {
+        if (runnerActive) {
+          await addLog(
+            "Runner already active, ignoring duplicate start request.",
+          );
+          return;
+        }
+        runnerActive = true;
+        shouldStopRunner = false;
+        const pause = Math.max(
+          50,
+          Number.parseInt(ui.blinkPauseMs.value, 10) || 350,
+        );
+        const ledOn = hexToBytes(ui.ledOnHex.value || "01 00");
+        const ledOff = hexToBytes(ui.ledOffHex.value || "01 00 00");
+
+        const stages = [
+          {
+            name: "S1 raw ON with-response",
+            run: async () => writeSequence([ledOn], "with-response", "S1"),
+          },
+          {
+            name: "S2 raw OFF with-response",
+            run: async () => writeSequence([ledOff], "with-response", "S2"),
+          },
+          {
+            name: "S3 raw blink with-response",
+            run: async () => {
+              await writeSequence([ledOn], "with-response", "S3");
+              await new Promise((r) => setTimeout(r, pause));
+              await writeSequence([ledOff], "with-response", "S3");
+            },
+          },
+          {
+            name: "S4 raw ON without-response",
+            run: async () => writeSequence([ledOn], "without-response", "S4"),
+          },
+          {
+            name: "S5 raw OFF without-response",
+            run: async () => writeSequence([ledOff], "without-response", "S5"),
+          },
+          {
+            name: "S6 short command 01",
+            run: async () =>
+              writeSequence([new Uint8Array([0x01])], "with-response", "S6"),
+          },
+          {
+            name: "S7 short command 00",
+            run: async () =>
+              writeSequence([new Uint8Array([0x00])], "with-response", "S7"),
+          },
+          {
+            name: "S8 repeat ON x3",
+            run: async () =>
+              writeSequence([ledOn, ledOn, ledOn], "with-response", "S8"),
+          },
+          {
+            name: "S9 APK task10 framed with-response",
+            run: async () => {
+              const mac = ui.manualMac.value.trim();
+              if (!mac) {
+                await addLog("S9 skipped: MAC not provided");
+                return;
+              }
+              const op = hexToBytes(ui.apkOpHex.value || "00");
+              if (op.length !== 1) {
+                throw new Error("APK op must be exactly 1 byte");
+              }
+              const packets = apkTask10Packets(mac, op[0]);
+              await writeSequence(packets, "with-response", "S9");
+            },
+          },
+          {
+            name: "S10 APK task10 framed without-response",
+            run: async () => {
+              const mac = ui.manualMac.value.trim();
+              if (!mac) {
+                await addLog("S10 skipped: MAC not provided");
+                return;
+              }
+              const op = hexToBytes(ui.apkOpHex.value || "00");
+              if (op.length !== 1) {
+                throw new Error("APK op must be exactly 1 byte");
+              }
+              const packets = apkTask10Packets(mac, op[0]);
+              await writeSequence(packets, "without-response", "S10");
+            },
+          },
+        ];
+
+        const failures = [];
+        try {
+          await ensureConnected();
+
+          for (let i = 0; i < stages.length; i += 1) {
+            if (shouldStopRunner) {
+              await addLog("Runner stopped by user.");
+              break;
+            }
+            const stage = stages[i];
+            try {
+              await runStage(stage);
+            } catch (error) {
+              const msg = `${stage.name} failed: ${formatError(error)}`;
+              failures.push(msg);
+              await addLog(msg);
+              if (ui.autoReconnect.value === "on") {
+                try {
+                  await autoReconnect();
+                } catch (_e) {
+                  // autoReconnect already logs
+                }
+              }
+            }
+            await new Promise((r) => setTimeout(r, 220));
+          }
+
+          updateStage("finished");
+          if (failures.length) {
+            setStatus(
+              `Finished with ${failures.length} stage error(s). Copy log and share.`,
+            );
+          } else {
+            setStatus(
+              "Finished all stages. Copy log and share what stage worked on device.",
+            );
+          }
+        } finally {
+          runnerActive = false;
+        }
+      }
 
       ui.connectBtn.addEventListener("click", async () => {
         try {
+          if (!selectedDevice) {
+            await pickDevice();
+          }
           await connectDevice();
+          if (!debugStarted) {
+            debugStarted = true;
+            await addLog(
+              "First connection complete. Auto-starting staged LED debug.",
+            );
+            void runAllStages();
+          }
         } catch (error) {
           setStatus(`Connect failed: ${formatError(error)}`);
         }
@@ -572,56 +830,21 @@
 
       ui.disconnectBtn.addEventListener("click", async () => {
         try {
+          shouldStopRunner = true;
           await disconnectDevice();
         } catch (error) {
           setStatus(`Disconnect failed: ${formatError(error)}`);
         }
       });
 
-      ui.ledOnBtn.addEventListener("click", async () => {
+      ui.copyLogBtn.addEventListener("click", async () => {
         try {
-          await sendLedOn();
-        } catch (error) {
-          setStatus(`LED ON failed: ${formatError(error)}`);
-        }
-      });
-
-      ui.ledOffBtn.addEventListener("click", async () => {
-        try {
-          await sendLedOff();
-        } catch (error) {
-          setStatus(`LED OFF failed: ${formatError(error)}`);
-        }
-      });
-
-      ui.blinkBtn.addEventListener("click", async () => {
-        try {
-          await blinkOnce();
-        } catch (error) {
-          setStatus(`Blink failed: ${formatError(error)}`);
-        }
-      });
-
-      ui.chooseLogFileBtn.addEventListener("click", async () => {
-        try {
-          if (!window.showSaveFilePicker) {
-            throw new Error(
-              "showSaveFilePicker API is not available in this browser",
-            );
-          }
-          logFileHandle = await window.showSaveFilePicker({
-            suggestedName: `ble-debug-${Date.now()}.txt`,
-            types: [
-              {
-                description: "Text log",
-                accept: { "text/plain": [".txt"] },
-              },
-            ],
-          });
-          await addLog("Log file selected. Live logging to file enabled.");
-          setStatus("Log file selected.");
-        } catch (error) {
-          setStatus(`Choose log file failed: ${formatError(error)}`);
+          await navigator.clipboard.writeText(logText || "");
+          setStatus("Log copied");
+        } catch (_error) {
+          ui.log.select();
+          document.execCommand("copy");
+          setStatus("Log copied with fallback method");
         }
       });
 
@@ -630,32 +853,22 @@
         const url = URL.createObjectURL(blob);
         const a = document.createElement("a");
         a.href = url;
-        a.download = `ble-debug-log-${Date.now()}.txt`;
+        a.download = `ble-led-stage-log-${Date.now()}.txt`;
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
         URL.revokeObjectURL(url);
-        setStatus("Log downloaded.");
-      });
-
-      ui.copyLogBtn.addEventListener("click", async () => {
-        try {
-          await navigator.clipboard.writeText(logText || "");
-          setStatus("Log copied.");
-        } catch (_error) {
-          ui.log.select();
-          document.execCommand("copy");
-          setStatus("Log copied with fallback method.");
-        }
+        setStatus("Log downloaded");
       });
 
       ui.clearLogBtn.addEventListener("click", () => {
         logText = "";
         ui.log.value = "";
-        setStatus("Log cleared.");
+        setStatus("Log cleared");
       });
 
-      setStatus("Ready.");
+      updateStage("idle");
+      setStatus("Ready");
     </script>
   </body>
 </html>
