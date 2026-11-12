@@ -1,0 +1,703 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>E-Ink Label BLE Web Tool</title>
+    <style>
+      :root {
+        --bg: #f3efe8;
+        --card: #fffdf9;
+        --ink: #1f1d1a;
+        --muted: #6f675b;
+        --line: #ddd3c5;
+        --accent: #136f63;
+        --accent-2: #dd6b20;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        font-family: "Segoe UI", "Helvetica Neue", sans-serif;
+        color: var(--ink);
+        background:
+          radial-gradient(900px 400px at 10% -10%, #fff7ea 0%, transparent 70%),
+          radial-gradient(700px 300px at 90% 0%, #e8fff6 0%, transparent 70%),
+          var(--bg);
+      }
+
+      .wrap {
+        max-width: 1080px;
+        margin: 0 auto;
+        padding: 24px;
+        display: grid;
+        gap: 16px;
+      }
+
+      .hero {
+        background: linear-gradient(135deg, #fffdf8 0%, #f8f3ea 100%);
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        padding: 18px;
+      }
+
+      .hero h1 {
+        margin: 0 0 8px;
+        font-size: clamp(1.25rem, 2.8vw, 2rem);
+      }
+
+      .hero p {
+        margin: 0;
+        color: var(--muted);
+        line-height: 1.45;
+      }
+
+      .grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 16px;
+      }
+
+      .card {
+        background: var(--card);
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        padding: 16px;
+      }
+
+      h2 {
+        margin: 0 0 12px;
+        font-size: 1.1rem;
+      }
+
+      .row {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 10px;
+        margin-bottom: 10px;
+      }
+
+      .row.single {
+        grid-template-columns: 1fr;
+      }
+
+      label {
+        display: grid;
+        gap: 6px;
+        color: #453f36;
+        font-size: 0.92rem;
+      }
+
+      input,
+      select,
+      button,
+      textarea {
+        font: inherit;
+        border-radius: 8px;
+        border: 1px solid #cfc3b3;
+        padding: 9px 10px;
+        background: #fffcf7;
+        color: inherit;
+      }
+
+      textarea {
+        min-height: 74px;
+        resize: vertical;
+      }
+
+      .btns {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-top: 8px;
+      }
+
+      button {
+        background: #fff;
+        cursor: pointer;
+        transition:
+          transform 120ms ease,
+          box-shadow 120ms ease;
+      }
+
+      button:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 4px 10px rgba(0, 0, 0, 0.08);
+      }
+
+      button.primary {
+        background: var(--accent);
+        color: #fff;
+        border-color: transparent;
+      }
+
+      button.warn {
+        background: var(--accent-2);
+        color: #fff;
+        border-color: transparent;
+      }
+
+      .status {
+        font-size: 0.95rem;
+        border-left: 4px solid var(--accent);
+        background: #f1fbf8;
+        padding: 10px 12px;
+        border-radius: 8px;
+        color: #16443d;
+        min-height: 48px;
+        line-height: 1.4;
+      }
+
+      .kv {
+        display: grid;
+        gap: 6px;
+        margin-top: 10px;
+        color: var(--muted);
+        font-size: 0.92rem;
+      }
+
+      .preview {
+        width: 100%;
+        max-height: 220px;
+        border: 1px dashed #cabca9;
+        border-radius: 10px;
+        object-fit: contain;
+        background: repeating-linear-gradient(
+          45deg,
+          #f8f2e9,
+          #f8f2e9 10px,
+          #fefaf3 10px,
+          #fefaf3 20px
+        );
+      }
+
+      .hint {
+        margin-top: 10px;
+        color: var(--muted);
+        font-size: 0.88rem;
+        line-height: 1.4;
+      }
+
+      @media (max-width: 900px) {
+        .grid {
+          grid-template-columns: 1fr;
+        }
+        .row {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="wrap">
+      <section class="hero">
+        <h1>ET0420-40B BLE Web Tool</h1>
+        <p>
+          Plain HTML + JavaScript page. No Node.js. Uses Web Bluetooth to
+          connect, run LED test, and send e-ink bitmap payloads using the same
+          defaults as the Python app.
+        </p>
+      </section>
+
+      <section class="grid">
+        <article class="card">
+          <h2>BLE Connection</h2>
+
+          <div class="row single">
+            <label
+              >Service UUID
+              <input
+                id="serviceUuid"
+                value="00001523-1212-efde-1523-785feabcd123"
+              />
+            </label>
+          </div>
+
+          <div class="row single">
+            <label
+              >Write Characteristic UUID
+              <input
+                id="writeUuid"
+                value="00001525-1212-efde-1523-785feabcd123"
+              />
+            </label>
+          </div>
+
+          <div class="row single">
+            <label
+              >Notify Characteristic UUID (optional)
+              <input
+                id="notifyUuid"
+                value="00001526-1212-efde-1523-785feabcd123"
+              />
+            </label>
+          </div>
+
+          <div class="row">
+            <label
+              >Device name prefix
+              <input id="namePrefix" value="easyTag" />
+            </label>
+            <label
+              >BLE chunk size
+              <input
+                id="chunkSize"
+                type="number"
+                min="20"
+                max="512"
+                value="180"
+              />
+            </label>
+          </div>
+
+          <div class="btns">
+            <button id="pickBtn" class="primary">Pick BLE Device</button>
+            <button id="connectBtn">Connect</button>
+            <button id="disconnectBtn">Disconnect</button>
+          </div>
+
+          <div class="row" style="margin-top: 14px">
+            <label
+              >LED test payload hex
+              <input id="ledHex" value="01 00" />
+            </label>
+            <label
+              >&nbsp;
+              <button id="ledBtn" class="warn">Blink LED</button>
+            </label>
+          </div>
+
+          <div class="kv">
+            <div>
+              <strong>Device:</strong> <span id="deviceName">(none)</span>
+            </div>
+            <div>
+              <strong>Status:</strong> <span id="connState">disconnected</span>
+            </div>
+          </div>
+        </article>
+
+        <article class="card">
+          <h2>Image & Payload</h2>
+
+          <div class="row">
+            <label
+              >Panel width
+              <input id="panelWidth" type="number" min="1" value="400" />
+            </label>
+            <label
+              >Panel height
+              <input id="panelHeight" type="number" min="1" value="300" />
+            </label>
+          </div>
+
+          <div class="row">
+            <label
+              >Color mode
+              <select id="colorMode">
+                <option value="black/white">black/white</option>
+                <option value="black/white/red" selected>
+                  black/white/red
+                </option>
+              </select>
+            </label>
+            <label
+              >Optional hex prefix
+              <input id="prefixHex" placeholder="55AA0102" />
+            </label>
+          </div>
+
+          <div class="row single">
+            <label
+              >Image file
+              <input
+                id="imageInput"
+                type="file"
+                accept="image/png,image/jpeg,image/bmp,image/gif,image/webp"
+              />
+            </label>
+          </div>
+
+          <img id="preview" class="preview" alt="image preview" />
+
+          <div class="btns" style="margin-top: 12px">
+            <button id="sendBtn" class="primary">Send Image</button>
+          </div>
+
+          <p class="hint">
+            Browser note: Web Bluetooth requires Chromium-based browser and
+            secure context (https or localhost).
+          </p>
+        </article>
+      </section>
+
+      <section class="card">
+        <h2>Log</h2>
+        <div id="status" class="status">Ready. Pick a device to begin.</div>
+        <textarea id="log" readonly></textarea>
+      </section>
+    </main>
+
+    <script>
+      const ui = {
+        serviceUuid: document.getElementById("serviceUuid"),
+        writeUuid: document.getElementById("writeUuid"),
+        notifyUuid: document.getElementById("notifyUuid"),
+        namePrefix: document.getElementById("namePrefix"),
+        chunkSize: document.getElementById("chunkSize"),
+        ledHex: document.getElementById("ledHex"),
+        panelWidth: document.getElementById("panelWidth"),
+        panelHeight: document.getElementById("panelHeight"),
+        colorMode: document.getElementById("colorMode"),
+        prefixHex: document.getElementById("prefixHex"),
+        imageInput: document.getElementById("imageInput"),
+        preview: document.getElementById("preview"),
+        deviceName: document.getElementById("deviceName"),
+        connState: document.getElementById("connState"),
+        status: document.getElementById("status"),
+        log: document.getElementById("log"),
+        pickBtn: document.getElementById("pickBtn"),
+        connectBtn: document.getElementById("connectBtn"),
+        disconnectBtn: document.getElementById("disconnectBtn"),
+        ledBtn: document.getElementById("ledBtn"),
+        sendBtn: document.getElementById("sendBtn"),
+      };
+
+      let selectedDevice = null;
+      let gattServer = null;
+      let writeCharacteristic = null;
+      let imageBitmap = null;
+
+      function setStatus(text) {
+        ui.status.textContent = text;
+        addLog(text);
+      }
+
+      function addLog(text) {
+        const stamp = new Date().toLocaleTimeString();
+        ui.log.value += `[${stamp}] ${text}\n`;
+        ui.log.scrollTop = ui.log.scrollHeight;
+      }
+
+      function normalizeHexString(value) {
+        return value.replace(/[\s:\-]/g, "").trim();
+      }
+
+      function hexToBytes(value) {
+        const clean = normalizeHexString(value);
+        if (!clean) {
+          return new Uint8Array(0);
+        }
+        if (clean.length % 2 !== 0) {
+          throw new Error(`Hex string has odd length: ${value}`);
+        }
+        const out = new Uint8Array(clean.length / 2);
+        for (let i = 0; i < clean.length; i += 2) {
+          out[i / 2] = Number.parseInt(clean.slice(i, i + 2), 16);
+        }
+        return out;
+      }
+
+      function bytesToHex(bytes) {
+        return Array.from(bytes, (b) => b.toString(16).padStart(2, "0"))
+          .join("")
+          .toUpperCase();
+      }
+
+      function nearestPaletteIndex(rgb, palette) {
+        let bestIndex = 0;
+        let bestDistance = Number.POSITIVE_INFINITY;
+        for (let i = 0; i < palette.length; i += 1) {
+          const p = palette[i];
+          const dr = rgb[0] - p[0];
+          const dg = rgb[1] - p[1];
+          const db = rgb[2] - p[2];
+          const distance = dr * dr + dg * dg + db * db;
+          if (distance < bestDistance) {
+            bestDistance = distance;
+            bestIndex = i;
+          }
+        }
+        return bestIndex;
+      }
+
+      function bitsToBytes(bitValues) {
+        const byteLen = Math.ceil(bitValues.length / 8);
+        const out = new Uint8Array(byteLen);
+        for (let i = 0; i < byteLen; i += 1) {
+          let value = 0;
+          for (let bit = 0; bit < 8; bit += 1) {
+            const idx = i * 8 + bit;
+            value =
+              (value << 1) | (idx < bitValues.length && bitValues[idx] ? 1 : 0);
+          }
+          out[i] = value;
+        }
+        return out;
+      }
+
+      function concatBytes(...parts) {
+        const total = parts.reduce((sum, arr) => sum + arr.length, 0);
+        const out = new Uint8Array(total);
+        let offset = 0;
+        for (const arr of parts) {
+          out.set(arr, offset);
+          offset += arr.length;
+        }
+        return out;
+      }
+
+      function buildHeaderBytes(padW, padH) {
+        const hex = `FE${(0).toString(16).padStart(4, "0").toUpperCase()}${(0).toString(16).padStart(4, "0").toUpperCase()}${(padH - 1).toString(16).padStart(4, "0").toUpperCase()}${(padW - 1).toString(16).padStart(4, "0").toUpperCase()}`;
+        return hexToBytes(hex);
+      }
+
+      function buildBitmapPayload() {
+        if (!imageBitmap) {
+          throw new Error("No image selected.");
+        }
+
+        const targetWidth = Number.parseInt(ui.panelWidth.value, 10) || 400;
+        const targetHeight = Number.parseInt(ui.panelHeight.value, 10) || 300;
+        const useRed = ui.colorMode.value === "black/white/red";
+
+        const canvas = document.createElement("canvas");
+        canvas.width = targetWidth;
+        canvas.height = targetHeight;
+        const ctx = canvas.getContext("2d", { willReadFrequently: true });
+        ctx.drawImage(imageBitmap, 0, 0, targetWidth, targetHeight);
+
+        const { data } = ctx.getImageData(0, 0, targetWidth, targetHeight);
+        const padW = Math.ceil(targetWidth / 8) * 8;
+        const padH = Math.ceil(targetHeight / 8) * 8;
+        const palette = useRed
+          ? [
+              [0, 0, 0],
+              [255, 255, 255],
+              [230, 0, 0],
+            ]
+          : [
+              [0, 0, 0],
+              [255, 255, 255],
+            ];
+
+        const bwMap = new Uint8Array(padW * padH);
+        const redMap = new Uint8Array(padW * padH);
+
+        for (let y = 0; y < targetHeight; y += 1) {
+          for (let x = 0; x < targetWidth; x += 1) {
+            const pxIndex = (y * targetWidth + x) * 4;
+            const idx = nearestPaletteIndex(
+              [data[pxIndex], data[pxIndex + 1], data[pxIndex + 2]],
+              palette,
+            );
+            const bitIndex = y * padW + x;
+            if (idx === 0) {
+              bwMap[bitIndex] = 1;
+            } else if (idx === 2) {
+              redMap[bitIndex] = 1;
+            }
+          }
+        }
+
+        const header = buildHeaderBytes(padW, padH);
+        const bwBytes = bitsToBytes(bwMap);
+        let payload;
+
+        if (!useRed) {
+          payload = concatBytes(header, bwBytes);
+        } else {
+          const redBytes = bitsToBytes(redMap);
+          payload = concatBytes(
+            header,
+            bwBytes,
+            hexToBytes("03"),
+            header,
+            redBytes,
+          );
+        }
+
+        const prefixText = ui.prefixHex.value.trim();
+        if (prefixText) {
+          payload = concatBytes(hexToBytes(prefixText), payload);
+        }
+
+        return payload;
+      }
+
+      async function pickDevice() {
+        if (!navigator.bluetooth) {
+          throw new Error("Web Bluetooth is not available in this browser.");
+        }
+
+        const serviceUuid = ui.serviceUuid.value.trim();
+        const prefix = ui.namePrefix.value.trim();
+
+        const filters = [];
+        if (prefix) {
+          filters.push({
+            namePrefix: prefix,
+            services: serviceUuid ? [serviceUuid] : undefined,
+          });
+        }
+        if (serviceUuid) {
+          filters.push({ services: [serviceUuid] });
+        }
+
+        selectedDevice = await navigator.bluetooth.requestDevice({
+          filters: filters.length ? filters : undefined,
+          acceptAllDevices: filters.length ? false : true,
+          optionalServices: [serviceUuid, ui.notifyUuid.value.trim()].filter(
+            Boolean,
+          ),
+        });
+
+        selectedDevice.addEventListener("gattserverdisconnected", () => {
+          ui.connState.textContent = "disconnected";
+          writeCharacteristic = null;
+          gattServer = null;
+          setStatus("Device disconnected.");
+        });
+
+        ui.deviceName.textContent = `${selectedDevice.name || "Unknown device"} (${selectedDevice.id || "no-id"})`;
+        setStatus(`Picked device: ${selectedDevice.name || "Unknown device"}`);
+      }
+
+      async function connectDevice() {
+        if (!selectedDevice) {
+          throw new Error("Pick a BLE device first.");
+        }
+        const serviceUuid = ui.serviceUuid.value.trim();
+        const writeUuid = ui.writeUuid.value.trim();
+
+        gattServer = await selectedDevice.gatt.connect();
+        ui.connState.textContent = "connected";
+
+        const service = await gattServer.getPrimaryService(serviceUuid);
+        writeCharacteristic = await service.getCharacteristic(writeUuid);
+        setStatus("Connected and ready to write.");
+      }
+
+      async function disconnectDevice() {
+        if (selectedDevice && selectedDevice.gatt.connected) {
+          selectedDevice.gatt.disconnect();
+        }
+        ui.connState.textContent = "disconnected";
+        writeCharacteristic = null;
+        gattServer = null;
+        setStatus("Disconnected.");
+      }
+
+      async function writePayloadWithFallback(payload) {
+        if (!writeCharacteristic) {
+          throw new Error("Write characteristic not ready. Connect first.");
+        }
+
+        const chunkSize = Math.min(
+          512,
+          Math.max(20, Number.parseInt(ui.chunkSize.value, 10) || 180),
+        );
+        const chunks = [];
+        for (let i = 0; i < payload.length; i += chunkSize) {
+          chunks.push(payload.slice(i, i + chunkSize));
+        }
+
+        try {
+          for (const chunk of chunks) {
+            await writeCharacteristic.writeValueWithResponse(chunk);
+            await new Promise((r) => setTimeout(r, 50));
+          }
+          setStatus(
+            `Write successful (${chunks.length} chunk(s), with response).`,
+          );
+        } catch (error) {
+          addLog(`writeValueWithResponse failed: ${error}`);
+          for (const chunk of chunks) {
+            await writeCharacteristic.writeValueWithoutResponse(chunk);
+            await new Promise((r) => setTimeout(r, 50));
+          }
+          setStatus(
+            `Write successful (${chunks.length} chunk(s), without response).`,
+          );
+        }
+      }
+
+      async function blinkLed() {
+        const ledData = ui.ledHex.value.trim() || "01 00";
+        const payload = hexToBytes(ledData);
+        const withZero = concatBytes(payload, new Uint8Array([0x00]));
+        await writePayloadWithFallback(withZero);
+        await new Promise((r) => setTimeout(r, 300));
+        await writePayloadWithFallback(payload);
+        setStatus("LED test sent.");
+      }
+
+      async function sendImage() {
+        const payload = buildBitmapPayload();
+        addLog(`Payload bytes: ${payload.length}`);
+        addLog(
+          `Payload head: ${bytesToHex(payload.slice(0, Math.min(32, payload.length)))}`,
+        );
+        await writePayloadWithFallback(payload);
+        setStatus("Image sent successfully.");
+      }
+
+      ui.imageInput.addEventListener("change", async (event) => {
+        const file = event.target.files?.[0];
+        if (!file) {
+          imageBitmap = null;
+          ui.preview.removeAttribute("src");
+          return;
+        }
+
+        const imageUrl = URL.createObjectURL(file);
+        ui.preview.src = imageUrl;
+        imageBitmap = await createImageBitmap(file);
+        setStatus(`Loaded image: ${file.name}`);
+      });
+
+      ui.pickBtn.addEventListener("click", async () => {
+        try {
+          await pickDevice();
+        } catch (error) {
+          setStatus(`Pick failed: ${error.message || error}`);
+        }
+      });
+
+      ui.connectBtn.addEventListener("click", async () => {
+        try {
+          await connectDevice();
+        } catch (error) {
+          setStatus(`Connect failed: ${error.message || error}`);
+        }
+      });
+
+      ui.disconnectBtn.addEventListener("click", async () => {
+        try {
+          await disconnectDevice();
+        } catch (error) {
+          setStatus(`Disconnect failed: ${error.message || error}`);
+        }
+      });
+
+      ui.ledBtn.addEventListener("click", async () => {
+        try {
+          await blinkLed();
+        } catch (error) {
+          setStatus(`LED test failed: ${error.message || error}`);
+        }
+      });
+
+      ui.sendBtn.addEventListener("click", async () => {
+        try {
+          await sendImage();
+        } catch (error) {
+          setStatus(`Send failed: ${error.message || error}`);
+        }
+      });
+    </script>
+  </body>
+</html>
