@@ -1,0 +1,661 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>BLE LED Debug Tool</title>
+    <style>
+      :root {
+        --bg: #f5f1e9;
+        --card: #fffdf9;
+        --line: #d8cfbf;
+        --ink: #1f1d1a;
+        --muted: #6a6258;
+        --accent: #166b63;
+        --warn: #cb5f1f;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        font-family: "Segoe UI", "Helvetica Neue", sans-serif;
+        color: var(--ink);
+        background:
+          radial-gradient(700px 320px at 10% -10%, #fff8ef 0%, transparent 70%),
+          radial-gradient(700px 320px at 90% -10%, #eefdf8 0%, transparent 70%),
+          var(--bg);
+      }
+
+      .wrap {
+        max-width: 920px;
+        margin: 0 auto;
+        padding: 20px;
+        display: grid;
+        gap: 14px;
+      }
+
+      .card {
+        background: var(--card);
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        padding: 14px;
+      }
+
+      h1,
+      h2 {
+        margin: 0 0 10px;
+      }
+
+      h1 {
+        font-size: 1.5rem;
+      }
+
+      h2 {
+        font-size: 1.05rem;
+      }
+
+      .muted {
+        color: var(--muted);
+        margin: 0;
+      }
+
+      .row {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 10px;
+        margin-bottom: 10px;
+      }
+
+      .row.single {
+        grid-template-columns: 1fr;
+      }
+
+      label {
+        display: grid;
+        gap: 6px;
+        font-size: 0.92rem;
+      }
+
+      input,
+      select,
+      button,
+      textarea {
+        font: inherit;
+        border-radius: 8px;
+        border: 1px solid #c8bca8;
+        padding: 9px 10px;
+        background: #fffcf7;
+        color: var(--ink);
+      }
+
+      textarea {
+        min-height: 220px;
+        resize: vertical;
+      }
+
+      .btns {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+
+      button {
+        cursor: pointer;
+      }
+
+      button.primary {
+        background: var(--accent);
+        color: #fff;
+        border-color: transparent;
+      }
+
+      button.warn {
+        background: var(--warn);
+        color: #fff;
+        border-color: transparent;
+      }
+
+      .status {
+        border-left: 4px solid var(--accent);
+        background: #eff8f6;
+        color: #11413b;
+        border-radius: 8px;
+        padding: 10px;
+        min-height: 42px;
+      }
+
+      @media (max-width: 860px) {
+        .row {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="wrap">
+      <section class="card">
+        <h1>BLE LED Debug Tool</h1>
+        <p class="muted">
+          Dedicated debug page for connect + LED on/off tests. All events are
+          logged and can be saved to a file.
+        </p>
+      </section>
+
+      <section class="card">
+        <h2>Connection</h2>
+
+        <div class="row single">
+          <label>
+            Service UUID
+            <input
+              id="serviceUuid"
+              value="00001523-1212-efde-1523-785feabcd123"
+            />
+          </label>
+        </div>
+
+        <div class="row single">
+          <label>
+            Write Characteristic UUID
+            <input
+              id="writeUuid"
+              value="00001525-1212-efde-1523-785feabcd123"
+            />
+          </label>
+        </div>
+
+        <div class="row">
+          <label>
+            Device name prefix
+            <input id="namePrefix" value="easyTag" />
+          </label>
+          <label>
+            Write mode
+            <select id="writeMode">
+              <option value="auto" selected>auto</option>
+              <option value="with-response">with response</option>
+              <option value="without-response">without response</option>
+            </select>
+          </label>
+        </div>
+
+        <div class="row single">
+          <label>
+            <span>Auto reconnect on disconnect</span>
+            <select id="autoReconnect">
+              <option value="on" selected>on</option>
+              <option value="off">off</option>
+            </select>
+          </label>
+        </div>
+
+        <div class="btns">
+          <button id="pickBtn" class="primary">Pick Device</button>
+          <button id="connectBtn">Connect</button>
+          <button id="disconnectBtn">Disconnect</button>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>LED Commands</h2>
+
+        <div class="row">
+          <label>
+            LED ON hex
+            <input id="ledOnHex" value="01 00" />
+          </label>
+          <label>
+            LED OFF hex
+            <input id="ledOffHex" value="01 00 00" />
+          </label>
+        </div>
+
+        <div class="row">
+          <label>
+            Blink delay (ms)
+            <input id="blinkDelayMs" type="number" min="50" value="300" />
+          </label>
+          <label>
+            Chunk size
+            <input
+              id="chunkSize"
+              type="number"
+              min="20"
+              max="512"
+              value="180"
+            />
+          </label>
+        </div>
+
+        <div class="btns">
+          <button id="ledOnBtn" class="primary">LED ON</button>
+          <button id="ledOffBtn" class="warn">LED OFF</button>
+          <button id="blinkBtn">Blink Once</button>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>Log</h2>
+        <div id="status" class="status">Ready.</div>
+
+        <div class="btns" style="margin-top: 10px; margin-bottom: 8px">
+          <button id="chooseLogFileBtn">Choose Log File</button>
+          <button id="downloadLogBtn">Download Log</button>
+          <button id="copyLogBtn">Copy Log</button>
+          <button id="clearLogBtn">Clear Log</button>
+        </div>
+
+        <textarea id="log" readonly></textarea>
+      </section>
+    </main>
+
+    <script>
+      const ui = {
+        serviceUuid: document.getElementById("serviceUuid"),
+        writeUuid: document.getElementById("writeUuid"),
+        namePrefix: document.getElementById("namePrefix"),
+        writeMode: document.getElementById("writeMode"),
+        autoReconnect: document.getElementById("autoReconnect"),
+        ledOnHex: document.getElementById("ledOnHex"),
+        ledOffHex: document.getElementById("ledOffHex"),
+        blinkDelayMs: document.getElementById("blinkDelayMs"),
+        chunkSize: document.getElementById("chunkSize"),
+        status: document.getElementById("status"),
+        log: document.getElementById("log"),
+        pickBtn: document.getElementById("pickBtn"),
+        connectBtn: document.getElementById("connectBtn"),
+        disconnectBtn: document.getElementById("disconnectBtn"),
+        ledOnBtn: document.getElementById("ledOnBtn"),
+        ledOffBtn: document.getElementById("ledOffBtn"),
+        blinkBtn: document.getElementById("blinkBtn"),
+        chooseLogFileBtn: document.getElementById("chooseLogFileBtn"),
+        downloadLogBtn: document.getElementById("downloadLogBtn"),
+        copyLogBtn: document.getElementById("copyLogBtn"),
+        clearLogBtn: document.getElementById("clearLogBtn"),
+      };
+
+      let selectedDevice = null;
+      let gattServer = null;
+      let writeCharacteristic = null;
+      let writeSupport = { withResponse: false, withoutResponse: false };
+      let reconnectInProgress = false;
+      let manualDisconnectRequested = false;
+
+      let logText = "";
+      let logFileHandle = null;
+
+      function formatError(error) {
+        if (!error) {
+          return "unknown error";
+        }
+        const msg = error.message || String(error);
+        const name = error.name ? `${error.name}: ` : "";
+        return `${name}${msg}`;
+      }
+
+      async function flushLogToChosenFile() {
+        if (!logFileHandle) {
+          return;
+        }
+        const writable = await logFileHandle.createWritable();
+        await writable.write(logText);
+        await writable.close();
+      }
+
+      async function addLog(line) {
+        const stamp = new Date().toLocaleTimeString();
+        const full = `[${stamp}] ${line}`;
+        logText += `${full}\n`;
+        ui.log.value = logText;
+        ui.log.scrollTop = ui.log.scrollHeight;
+
+        try {
+          await flushLogToChosenFile();
+        } catch (error) {
+          ui.status.textContent = `Log file write failed: ${formatError(error)}`;
+        }
+      }
+
+      function setStatus(text) {
+        ui.status.textContent = text;
+        void addLog(text);
+      }
+
+      function normalizeHex(value) {
+        return value.replace(/[\s:\-]/g, "").trim();
+      }
+
+      function hexToBytes(value) {
+        const clean = normalizeHex(value);
+        if (!clean) {
+          return new Uint8Array(0);
+        }
+        if (clean.length % 2 !== 0) {
+          throw new Error(`Hex string has odd length: ${value}`);
+        }
+        const out = new Uint8Array(clean.length / 2);
+        for (let i = 0; i < clean.length; i += 2) {
+          out[i / 2] = Number.parseInt(clean.slice(i, i + 2), 16);
+        }
+        return out;
+      }
+
+      function bytesToHex(bytes) {
+        return Array.from(bytes, (b) => b.toString(16).padStart(2, "0"))
+          .join("")
+          .toUpperCase();
+      }
+
+      function chooseMode() {
+        const request = ui.writeMode.value;
+        if (request === "with-response") {
+          if (!writeSupport.withResponse) {
+            throw new Error("with-response not supported by characteristic");
+          }
+          return "with-response";
+        }
+        if (request === "without-response") {
+          if (!writeSupport.withoutResponse) {
+            throw new Error("without-response not supported by characteristic");
+          }
+          return "without-response";
+        }
+
+        if (writeSupport.withResponse) {
+          return "with-response";
+        }
+        if (writeSupport.withoutResponse) {
+          return "without-response";
+        }
+        throw new Error("No supported write mode");
+      }
+
+      async function writeChunk(chunk, mode) {
+        if (mode === "without-response") {
+          await writeCharacteristic.writeValueWithoutResponse(chunk);
+          return;
+        }
+        await writeCharacteristic.writeValueWithResponse(chunk);
+      }
+
+      async function writeBytes(payload) {
+        if (!writeCharacteristic || !selectedDevice?.gatt?.connected) {
+          if (ui.autoReconnect.value === "on") {
+            await addLog(
+              "Write requested while disconnected. Trying auto reconnect...",
+            );
+            await connectDevice();
+          } else {
+            throw new Error("Not connected");
+          }
+        }
+
+        const mode = chooseMode();
+        const configuredChunk = Math.min(
+          512,
+          Math.max(20, Number.parseInt(ui.chunkSize.value, 10) || 180),
+        );
+        const chunkSize =
+          mode === "without-response"
+            ? Math.min(20, configuredChunk)
+            : configuredChunk;
+
+        const chunks = [];
+        for (let i = 0; i < payload.length; i += chunkSize) {
+          chunks.push(payload.slice(i, i + chunkSize));
+        }
+
+        await addLog(
+          `Write start: mode=${mode}, payload=${payload.length}, chunks=${chunks.length}, chunkSize=${chunkSize}`,
+        );
+
+        for (let i = 0; i < chunks.length; i += 1) {
+          const chunk = chunks[i];
+          await writeChunk(chunk, mode);
+          if (i < 2 || i === chunks.length - 1) {
+            await addLog(
+              `Chunk ${i + 1}/${chunks.length} (${chunk.length} bytes) sent`,
+            );
+          }
+          await new Promise((r) => setTimeout(r, 70));
+        }
+      }
+
+      async function pickDevice() {
+        if (!navigator.bluetooth) {
+          throw new Error("Web Bluetooth is not available in this browser.");
+        }
+
+        const serviceUuid = ui.serviceUuid.value.trim();
+        const namePrefix = ui.namePrefix.value.trim();
+        await addLog(
+          `requestDevice: service=${serviceUuid || "(none)"}, namePrefix=${namePrefix || "(none)"}`,
+        );
+
+        const filters = [];
+        if (namePrefix) {
+          filters.push({
+            namePrefix,
+            services: serviceUuid ? [serviceUuid] : undefined,
+          });
+        }
+        if (serviceUuid) {
+          filters.push({ services: [serviceUuid] });
+        }
+
+        selectedDevice = await navigator.bluetooth.requestDevice({
+          filters: filters.length ? filters : undefined,
+          acceptAllDevices: filters.length ? false : true,
+          optionalServices: serviceUuid ? [serviceUuid] : [],
+        });
+
+        selectedDevice.addEventListener("gattserverdisconnected", () => {
+          gattServer = null;
+          writeCharacteristic = null;
+          writeSupport = { withResponse: false, withoutResponse: false };
+          setStatus("Device disconnected.");
+
+          if (
+            ui.autoReconnect.value === "on" &&
+            !manualDisconnectRequested &&
+            !reconnectInProgress
+          ) {
+            void autoReconnect();
+          }
+
+          manualDisconnectRequested = false;
+        });
+
+        setStatus(`Picked device: ${selectedDevice.name || "Unknown"}`);
+      }
+
+      async function connectDevice() {
+        if (!selectedDevice) {
+          throw new Error("Pick a device first");
+        }
+
+        const serviceUuid = ui.serviceUuid.value.trim();
+        const writeUuid = ui.writeUuid.value.trim();
+
+        await addLog(`Connecting: service=${serviceUuid}, write=${writeUuid}`);
+        gattServer = await selectedDevice.gatt.connect();
+
+        const service = await gattServer.getPrimaryService(serviceUuid);
+        writeCharacteristic = await service.getCharacteristic(writeUuid);
+        writeSupport = {
+          withResponse: Boolean(writeCharacteristic?.properties?.write),
+          withoutResponse: Boolean(
+            writeCharacteristic?.properties?.writeWithoutResponse,
+          ),
+        };
+
+        await addLog(
+          `Characteristic support: withResponse=${writeSupport.withResponse}, withoutResponse=${writeSupport.withoutResponse}`,
+        );
+        setStatus("Connected and ready.");
+      }
+
+      async function autoReconnect() {
+        if (!selectedDevice || reconnectInProgress) {
+          return;
+        }
+        reconnectInProgress = true;
+        try {
+          await addLog(
+            "Auto reconnect: waiting 700ms before reconnect attempt...",
+          );
+          await new Promise((r) => setTimeout(r, 700));
+          await connectDevice();
+          setStatus("Auto reconnect succeeded.");
+        } catch (error) {
+          setStatus(`Auto reconnect failed: ${formatError(error)}`);
+        } finally {
+          reconnectInProgress = false;
+        }
+      }
+
+      async function disconnectDevice() {
+        manualDisconnectRequested = true;
+        if (selectedDevice?.gatt?.connected) {
+          selectedDevice.gatt.disconnect();
+        }
+        gattServer = null;
+        writeCharacteristic = null;
+        writeSupport = { withResponse: false, withoutResponse: false };
+        setStatus("Disconnected.");
+      }
+
+      async function sendLedOn() {
+        const bytes = hexToBytes(ui.ledOnHex.value.trim() || "01 00");
+        await addLog(`LED ON write: ${bytesToHex(bytes)}`);
+        await writeBytes(bytes);
+        setStatus("LED ON command sent.");
+      }
+
+      async function sendLedOff() {
+        const bytes = hexToBytes(ui.ledOffHex.value.trim() || "01 00 00");
+        await addLog(`LED OFF write: ${bytesToHex(bytes)}`);
+        await writeBytes(bytes);
+        setStatus("LED OFF command sent.");
+      }
+
+      async function blinkOnce() {
+        const delay = Math.max(
+          50,
+          Number.parseInt(ui.blinkDelayMs.value, 10) || 300,
+        );
+        await addLog(`Blink start. Delay=${delay}ms`);
+        await sendLedOn();
+        await new Promise((r) => setTimeout(r, delay));
+        await sendLedOff();
+        setStatus("Blink sequence sent.");
+      }
+
+      ui.pickBtn.addEventListener("click", async () => {
+        try {
+          await pickDevice();
+        } catch (error) {
+          setStatus(`Pick failed: ${formatError(error)}`);
+        }
+      });
+
+      ui.connectBtn.addEventListener("click", async () => {
+        try {
+          await connectDevice();
+        } catch (error) {
+          setStatus(`Connect failed: ${formatError(error)}`);
+        }
+      });
+
+      ui.disconnectBtn.addEventListener("click", async () => {
+        try {
+          await disconnectDevice();
+        } catch (error) {
+          setStatus(`Disconnect failed: ${formatError(error)}`);
+        }
+      });
+
+      ui.ledOnBtn.addEventListener("click", async () => {
+        try {
+          await sendLedOn();
+        } catch (error) {
+          setStatus(`LED ON failed: ${formatError(error)}`);
+        }
+      });
+
+      ui.ledOffBtn.addEventListener("click", async () => {
+        try {
+          await sendLedOff();
+        } catch (error) {
+          setStatus(`LED OFF failed: ${formatError(error)}`);
+        }
+      });
+
+      ui.blinkBtn.addEventListener("click", async () => {
+        try {
+          await blinkOnce();
+        } catch (error) {
+          setStatus(`Blink failed: ${formatError(error)}`);
+        }
+      });
+
+      ui.chooseLogFileBtn.addEventListener("click", async () => {
+        try {
+          if (!window.showSaveFilePicker) {
+            throw new Error(
+              "showSaveFilePicker API is not available in this browser",
+            );
+          }
+          logFileHandle = await window.showSaveFilePicker({
+            suggestedName: `ble-debug-${Date.now()}.txt`,
+            types: [
+              {
+                description: "Text log",
+                accept: { "text/plain": [".txt"] },
+              },
+            ],
+          });
+          await addLog("Log file selected. Live logging to file enabled.");
+          setStatus("Log file selected.");
+        } catch (error) {
+          setStatus(`Choose log file failed: ${formatError(error)}`);
+        }
+      });
+
+      ui.downloadLogBtn.addEventListener("click", () => {
+        const blob = new Blob([logText], { type: "text/plain;charset=utf-8" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `ble-debug-log-${Date.now()}.txt`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        setStatus("Log downloaded.");
+      });
+
+      ui.copyLogBtn.addEventListener("click", async () => {
+        try {
+          await navigator.clipboard.writeText(logText || "");
+          setStatus("Log copied.");
+        } catch (_error) {
+          ui.log.select();
+          document.execCommand("copy");
+          setStatus("Log copied with fallback method.");
+        }
+      });
+
+      ui.clearLogBtn.addEventListener("click", () => {
+        logText = "";
+        ui.log.value = "";
+        setStatus("Log cleared.");
+      });
+
+      setStatus("Ready.");
+    </script>
+  </body>
+</html>
