@@ -1215,13 +1215,36 @@
           return "without-response";
         }
 
-        if (writeSupport.withoutResponse) {
-          return "without-response";
-        }
         if (writeSupport.withResponse) {
           return "with-response";
         }
+        if (writeSupport.withoutResponse) {
+          return "without-response";
+        }
         throw new Error("No supported write mode for this characteristic.");
+      }
+
+      async function reconnectForWrite() {
+        if (!selectedDevice) {
+          throw new Error("No selected device for reconnect.");
+        }
+        addLog("Attempting automatic reconnect...");
+        gattServer = await selectedDevice.gatt.connect();
+        ui.connState.textContent = "connected";
+
+        const serviceUuid = ui.serviceUuid.value.trim();
+        const writeUuid = ui.writeUuid.value.trim();
+        const service = await gattServer.getPrimaryService(serviceUuid);
+        writeCharacteristic = await service.getCharacteristic(writeUuid);
+        writeSupport = {
+          withResponse: Boolean(writeCharacteristic?.properties?.write),
+          withoutResponse: Boolean(
+            writeCharacteristic?.properties?.writeWithoutResponse,
+          ),
+        };
+        addLog(
+          `Reconnect OK. Characteristic write support: withResponse=${writeSupport.withResponse}, withoutResponse=${writeSupport.withoutResponse}`,
+        );
       }
 
       async function writeChunk(chunk, mode) {
@@ -1268,15 +1291,30 @@
         );
 
         try {
+          let reconnectAttempts = 0;
           for (let i = 0; i < chunks.length; i += 1) {
             const chunk = chunks[i];
-            await writeChunk(chunk, primaryMode);
+            try {
+              await writeChunk(chunk, primaryMode);
+            } catch (error) {
+              if (!selectedDevice?.gatt?.connected && reconnectAttempts < 1) {
+                reconnectAttempts += 1;
+                addLog(
+                  `Disconnected during chunk ${i + 1}/${chunks.length}; reconnecting and retrying chunk...`,
+                );
+                await reconnectForWrite();
+                i -= 1;
+                continue;
+              }
+              throw error;
+            }
+
             if (i < 2 || i === chunks.length - 1) {
               addLog(
                 `Chunk ${i + 1}/${chunks.length} sent (${chunk.length} bytes)`,
               );
             }
-            await new Promise((r) => setTimeout(r, 50));
+            await new Promise((r) => setTimeout(r, 70));
           }
           setStatus(
             `Write successful (${chunks.length} chunk(s), ${primaryMode}).`,
@@ -1306,7 +1344,7 @@
                 `Fallback chunk ${i + 1}/${chunks.length} sent (${chunk.length} bytes)`,
               );
             }
-            await new Promise((r) => setTimeout(r, 50));
+            await new Promise((r) => setTimeout(r, 70));
           }
           setStatus(
             `Write successful (${chunks.length} chunk(s), fallback ${fallbackMode}).`,
@@ -1323,6 +1361,12 @@
         );
         try {
           await writePayloadWithFallback(withZero);
+          if (!selectedDevice?.gatt?.connected) {
+            setStatus(
+              "LED command sent; device disconnected immediately (possible expected behavior).",
+            );
+            return;
+          }
           await new Promise((r) => setTimeout(r, 300));
           await writePayloadWithFallback(payload);
           setStatus("LED test sent (sequence A). If no blink, check logs.");
