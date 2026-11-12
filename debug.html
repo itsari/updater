@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>BLE LED Stage Debugger1</title>
+    <title>BLE LED Stage Debugger</title>
     <style>
       :root {
         --bg: #f4f2ed;
@@ -223,6 +223,7 @@
         <div class="btns">
           <button id="pickBtn">Search Devices</button>
           <button class="primary" id="connectBtn">Connect</button>
+          <button class="warn" id="runStagesBtn">Run All Stages</button>
           <button id="disconnectBtn" class="bad">Disconnect</button>
         </div>
       </section>
@@ -249,6 +250,12 @@
             Custom framed payload hex (optional)
             <input id="apkOpHex" value="01 00" />
           </label>
+        </div>
+
+        <div class="btns">
+          <button class="primary" id="ledOnBtn">Turn LED ON</button>
+          <button id="ledOffBtn">Turn LED OFF</button>
+          <button class="warn" id="identifyBtn">Identify Screen</button>
         </div>
 
         <p class="muted">
@@ -289,7 +296,11 @@
         log: document.getElementById("log"),
         pickBtn: document.getElementById("pickBtn"),
         connectBtn: document.getElementById("connectBtn"),
+        runStagesBtn: document.getElementById("runStagesBtn"),
         disconnectBtn: document.getElementById("disconnectBtn"),
+        ledOnBtn: document.getElementById("ledOnBtn"),
+        ledOffBtn: document.getElementById("ledOffBtn"),
+        identifyBtn: document.getElementById("identifyBtn"),
         copyLogBtn: document.getElementById("copyLogBtn"),
         downloadLogBtn: document.getElementById("downloadLogBtn"),
         clearLogBtn: document.getElementById("clearLogBtn"),
@@ -309,6 +320,21 @@
       const EASYTAG_KEY_INDEX_IMAGE = 0x62;
       const EASYTAG_KEY_INDEX_OFFSET = 9;
       const EASYTAG_CHUNK = 200;
+      const EASYTAG_RED_FLAG = 0x8000;
+      const EASYTAG_MODELS = {
+        33: [200, 200, "BWR"],
+        36: [250, 122, "BWR"],
+        39: [250, 122, "BW"],
+        "3A": [296, 152, "BWR"],
+        "3D": [296, 128, "BWR"],
+        FF: [296, 128, "BWR"],
+        55: [384, 184, "BWR"],
+        40: [400, 300, "BWR"],
+        43: [400, 300, "BWR"],
+        "4F": [648, 480, "BWR"],
+        44: [800, 480, "BWR"],
+        64: [960, 640, "BWR"],
+      };
 
       let selectedDevice = null;
       let gattServer = null;
@@ -318,7 +344,6 @@
       let reconnectInProgress = false;
       let manualDisconnectRequested = false;
       let shouldStopRunner = false;
-      let debugStarted = false;
       let runnerActive = false;
 
       let logText = "";
@@ -371,6 +396,180 @@
           return null;
         }
         return tail.match(/.{2}/g).join(":").toUpperCase();
+      }
+
+      function macHexFromText(macText) {
+        const clean = normalizeHex(macText).toUpperCase();
+        if (clean.length !== 12) {
+          throw new Error("MAC must be 12 hex chars / 6 bytes");
+        }
+        return clean;
+      }
+
+      function align8(value) {
+        return (value + 7) & ~7;
+      }
+
+      function packBits(bits) {
+        const out = [];
+        for (let i = 0; i < bits.length; i += 8) {
+          let b = 0;
+          for (let k = i; k < i + 8 && k < bits.length; k += 1) {
+            b = (b << 1) | bits[k];
+          }
+          out.push(b);
+        }
+        return out;
+      }
+
+      function runLength(bits) {
+        const out = [];
+        const total = bits.length;
+        let i = 0;
+        while (i < total) {
+          const value = bits[i];
+          let run = 1;
+          while (i + run < total && bits[i + run] === value && run < 0xffff) {
+            run += 1;
+          }
+          if (run < 7) {
+            let b = 0x80;
+            for (let p = 0; p < 7; p += 1) {
+              b |= (i + p < total ? bits[i + p] : 0) << (6 - p);
+            }
+            out.push(b);
+            i += 7;
+          } else if (run <= 31) {
+            out.push((value << 6) | run);
+            i += run;
+          } else if (run <= 255) {
+            out.push((value << 6) | 1, run);
+            i += run;
+          } else {
+            out.push(value << 6, run & 0xff, run >> 8);
+            i += run;
+          }
+        }
+        return out;
+      }
+
+      function rleBlock(bits, width, height, isRed) {
+        const data = runLength(bits);
+        const flag = isRed ? EASYTAG_RED_FLAG : 0;
+        return [
+          0xfc,
+          ...u16be(flag),
+          ...u16be(0),
+          ...u16be(flag | (height - 1)),
+          ...u16be(width - 1),
+          ...u32be(data.length),
+          ...data,
+        ];
+      }
+
+      function rawBlock(bits, width, height, isRed) {
+        return [
+          isRed ? 0x03 : 0xfe,
+          ...u16be(0),
+          ...u16be(0),
+          ...u16be(height - 1),
+          ...u16be(width - 1),
+          ...packBits(bits),
+        ];
+      }
+
+      function plane(codes, width, height, colorCode) {
+        const widthAligned = align8(width);
+        const out = new Uint8Array(widthAligned * align8(height));
+        for (let y = 0; y < height; y += 1) {
+          for (let x = 0; x < width; x += 1) {
+            out[y * widthAligned + x] =
+              codes[y * width + x] === colorCode ? 1 : 0;
+          }
+        }
+        return out;
+      }
+
+      function classifyEasyTagPixel(r, g, b, colors) {
+        if (colors === "BWR" && r >= 120 && r - Math.max(g, b) >= 60) {
+          return 2;
+        }
+        return r * 299 + g * 587 + b * 114 < 128000 ? 0 : 1;
+      }
+
+      function encodeEasyTagFromRgba(rgba, width, height, colors) {
+        const codes = new Uint8Array(width * height);
+        for (let i = 0; i < width * height; i += 1) {
+          const offset = i * 4;
+          codes[i] = classifyEasyTagPixel(
+            rgba[offset],
+            rgba[offset + 1],
+            rgba[offset + 2],
+            colors,
+          );
+        }
+
+        const widthAligned = align8(width);
+        const heightAligned = align8(height);
+        const black = plane(codes, width, height, 0);
+        let runs = rleBlock(black, widthAligned, heightAligned, false);
+        let raw = rawBlock(black, widthAligned, heightAligned, false);
+
+        if (colors === "BWR") {
+          const red = plane(codes, width, height, 2);
+          runs = runs.concat(rleBlock(red, widthAligned, heightAligned, true));
+          raw = raw.concat(rawBlock(red, widthAligned, heightAligned, true));
+        }
+
+        return new Uint8Array(runs.length <= raw.length ? runs : raw);
+      }
+
+      function buildIdentifyPayload(macAddress) {
+        const macHex = macHexFromText(macAddress);
+        const modelCode = macHex.slice(0, 2);
+        const model = EASYTAG_MODELS[modelCode];
+        if (!model) {
+          throw new Error(`Unknown easyTag model from MAC prefix ${modelCode}`);
+        }
+
+        const [width, height, colors] = model;
+        const canvas = document.createElement("canvas");
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext("2d", { willReadFrequently: true });
+
+        ctx.fillStyle = "#ffffff";
+        ctx.fillRect(0, 0, width, height);
+
+        const border = Math.max(8, Math.round(Math.min(width, height) * 0.03));
+        ctx.strokeStyle = "#e00000";
+        ctx.lineWidth = border;
+        ctx.strokeRect(border / 2, border / 2, width - border, height - border);
+
+        const code = macHex;
+        ctx.textAlign = "center";
+
+        ctx.fillStyle = "#000000";
+        ctx.font = `700 ${Math.max(18, Math.round(height * 0.085))}px sans-serif`;
+        ctx.fillText("THIS SCREEN IS", width / 2, Math.round(height * 0.17));
+
+        ctx.fillStyle = "#e00000";
+        ctx.font = `700 ${Math.max(28, Math.round(height * 0.2))}px sans-serif`;
+        ctx.fillText(code, width / 2, Math.round(height * 0.5));
+
+        ctx.fillStyle = "#000000";
+        ctx.font = `700 ${Math.max(20, Math.round(height * 0.1))}px sans-serif`;
+        ctx.fillText("Identify", width / 2, Math.round(height * 0.72));
+
+        ctx.font = `${Math.max(14, Math.round(height * 0.055))}px sans-serif`;
+        ctx.fillText(
+          "BLE LED Stage Debugger",
+          width / 2,
+          Math.round(height * 0.83),
+        );
+
+        const rgba = ctx.getImageData(0, 0, width, height).data;
+        return encodeEasyTagFromRgba(rgba, width, height, colors);
       }
 
       function updateStage(text) {
@@ -722,6 +921,69 @@
         }
       }
 
+      async function sendLedCommand(kind) {
+        const isOn = kind === "on";
+        const payload = hexToBytes(
+          isOn
+            ? ui.ledOnHex.value || "01 00"
+            : ui.ledOffHex.value || "01 00 00",
+        );
+        if (!payload.length) {
+          throw new Error("LED payload cannot be empty");
+        }
+
+        await ensureConnected();
+        const stageTag = isOn ? "MANUAL-ON" : "MANUAL-OFF";
+        let rawError = null;
+
+        try {
+          await addLog(
+            `${stageTag}: trying raw payload first (${payload.length} bytes)`,
+          );
+          await writeSequence([payload], "without-response", stageTag);
+          setStatus(`LED ${isOn ? "ON" : "OFF"} command sent (raw)`);
+          return;
+        } catch (error) {
+          rawError = error;
+          await addLog(`${stageTag}: raw send failed: ${formatError(error)}`);
+        }
+
+        const mac = ui.manualMac.value.trim();
+        if (!mac) {
+          throw (
+            rawError ||
+            new Error(
+              "LED command failed and MAC not available for framed fallback",
+            )
+          );
+        }
+
+        const framed = roomSignsFramedPackets(mac, payload);
+        await addLog(
+          `${stageTag}: trying framed fallback (${framed.length} packet(s))`,
+        );
+        await writeSequence(framed, "without-response", stageTag);
+        setStatus(`LED ${isOn ? "ON" : "OFF"} command sent (framed fallback)`);
+      }
+
+      async function sendIdentify() {
+        const mac = ui.manualMac.value.trim();
+        if (!mac) {
+          throw new Error("MAC is required for Identify");
+        }
+
+        await ensureConnected();
+        const payload = buildIdentifyPayload(mac);
+        const packets = roomSignsFramedPackets(mac, payload);
+        await addLog(
+          `IDENTIFY: built payload ${payload.length} byte(s), framed into ${packets.length} packet(s)`,
+        );
+        await writeSequence(packets, "without-response", "IDENTIFY");
+        setStatus(
+          "Identify command sent. Screen should redraw in about 30 seconds.",
+        );
+      }
+
       async function runStage(stage) {
         updateStage(stage.name);
         setStatus(`Running stage: ${stage.name}`);
@@ -870,15 +1132,43 @@
             return;
           }
           await connectDevice();
-          if (!debugStarted) {
-            debugStarted = true;
-            await addLog(
-              "First connection complete. Auto-starting staged LED debug.",
-            );
-            void runAllStages();
-          }
+          await addLog(
+            "Connection complete. Use Turn LED ON/OFF for quick test or Run All Stages for diagnostics.",
+          );
         } catch (error) {
           setStatus(`Connect failed: ${formatError(error)}`);
+        }
+      });
+
+      ui.runStagesBtn.addEventListener("click", async () => {
+        try {
+          void runAllStages();
+        } catch (error) {
+          setStatus(`Run stages failed: ${formatError(error)}`);
+        }
+      });
+
+      ui.ledOnBtn.addEventListener("click", async () => {
+        try {
+          await sendLedCommand("on");
+        } catch (error) {
+          setStatus(`LED ON failed: ${formatError(error)}`);
+        }
+      });
+
+      ui.ledOffBtn.addEventListener("click", async () => {
+        try {
+          await sendLedCommand("off");
+        } catch (error) {
+          setStatus(`LED OFF failed: ${formatError(error)}`);
+        }
+      });
+
+      ui.identifyBtn.addEventListener("click", async () => {
+        try {
+          await sendIdentify();
+        } catch (error) {
+          setStatus(`Identify failed: ${formatError(error)}`);
         }
       });
 
