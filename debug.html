@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>BLE LED Stage Debugger</title>
+    <title>BLE LED Stage Debugger1</title>
     <style>
       :root {
         --bg: #f4f2ed;
@@ -358,6 +358,21 @@
         return spaced ? parts.join(" ") : parts.join("");
       }
 
+      function macFromDeviceName(name) {
+        if (!name) {
+          return null;
+        }
+        const compact = name.replace(/[^A-Fa-f0-9]/g, "");
+        if (compact.length < 12) {
+          return null;
+        }
+        const tail = compact.slice(-12);
+        if (!/^[A-Fa-f0-9]{12}$/.test(tail)) {
+          return null;
+        }
+        return tail.match(/.{2}/g).join(":").toUpperCase();
+      }
+
       function updateStage(text) {
         ui.stageBanner.textContent = `Current Stage: ${text}`;
       }
@@ -505,6 +520,12 @@
           optionalServices: serviceUuid ? [serviceUuid] : [],
         });
 
+        const guessedMac = macFromDeviceName(selectedDevice.name || "");
+        if (guessedMac) {
+          ui.manualMac.value = guessedMac;
+          await addLog(`Derived MAC from device name: ${guessedMac}`);
+        }
+
         selectedDevice.addEventListener("gattserverdisconnected", () => {
           gattServer = null;
           writeCharacteristic = null;
@@ -522,7 +543,9 @@
           manualDisconnectRequested = false;
         });
 
-        setStatus(`Picked device: ${selectedDevice.name || "Unknown"}`);
+        setStatus(
+          `Picked device: ${selectedDevice.name || "Unknown"}${guessedMac ? ` (MAC: ${guessedMac})` : ""}`,
+        );
       }
 
       async function connectDevice() {
