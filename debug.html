@@ -221,6 +221,7 @@
         </div>
 
         <div class="btns">
+          <button id="pickBtn">Search Devices</button>
           <button class="primary" id="connectBtn">Connect</button>
           <button id="disconnectBtn" class="bad">Disconnect</button>
         </div>
@@ -286,6 +287,7 @@
         apkOpHex: document.getElementById("apkOpHex"),
         status: document.getElementById("status"),
         log: document.getElementById("log"),
+        pickBtn: document.getElementById("pickBtn"),
         connectBtn: document.getElementById("connectBtn"),
         disconnectBtn: document.getElementById("disconnectBtn"),
         copyLogBtn: document.getElementById("copyLogBtn"),
@@ -813,7 +815,8 @@
       ui.connectBtn.addEventListener("click", async () => {
         try {
           if (!selectedDevice) {
-            await pickDevice();
+            setStatus("No device selected. Click Search Devices first.");
+            return;
           }
           await connectDevice();
           if (!debugStarted) {
@@ -825,6 +828,14 @@
           }
         } catch (error) {
           setStatus(`Connect failed: ${formatError(error)}`);
+        }
+      });
+
+      ui.pickBtn.addEventListener("click", async () => {
+        try {
+          await pickDevice();
+        } catch (error) {
+          setStatus(`Search failed: ${formatError(error)}`);
         }
       });
 
